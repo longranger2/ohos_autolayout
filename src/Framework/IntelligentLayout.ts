@@ -55,9 +55,14 @@ export default class IntelligentLayout {
     }
 
     public static recoverPopwinStyle(): void {
-        for (const component of IntelligentLayout.popWindowMap.values()) {
+        for (const [popupInfo, component] of IntelligentLayout.popWindowMap.entries()) {
             if (component instanceof PopupWindowRelayout) {
-                component.restoreStyles(); 
+                component.cancelPendingValidation();
+                component.restoreStyles();
+            }
+
+            if (popupInfo?.root_node) {
+                PopupStateManager.resetState(popupInfo.root_node, '恢复弹窗样式并重置状态');
             }
         }
         IntelligentLayout.popWindowMap.clear();

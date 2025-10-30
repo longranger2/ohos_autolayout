@@ -44,12 +44,23 @@ jest.mock('../src/Framework/Popup/PopupWindowRelayout', () => ({
   })),
 }));
 
+jest.mock('../src/Framework/Popup/PopupStateManager', () => ({
+  PopupStateManager: {
+    canStartLayout: jest.fn(() => true),
+    clearState: jest.fn(),
+    printState: jest.fn(),
+    resetState: jest.fn(),
+    setState: jest.fn(() => true),
+  },
+}));
+
 import IntelligentLayout from '../src/Framework/IntelligentLayout';
 import { PopupWindowDetector } from '../src/Framework/Popup/PopupWindowDetector';
 import { PopupWindowRelayout } from '../src/Framework/Popup/PopupWindowRelayout';
 import { PopupInfo } from '../src/Framework/Popup/PopupInfo';
 import Utils from '../src/Framework/Utils/Utils';
 import { AComponent } from '../src/Framework/Common/base/AComponent';
+import { PopupStateManager } from '../src/Framework/Popup/PopupStateManager';
 
 describe('IntelligentLayout Module', () => {
   let mockPopupInfo: PopupInfo;
@@ -211,6 +222,10 @@ describe('IntelligentLayout Module', () => {
       IntelligentLayout.recoverPopwinStyle();
       
       expect(IntelligentLayout.popWindowMap.size).toBe(0);
+      expect(PopupStateManager.resetState).toHaveBeenCalledWith(
+        mockPopupInfo.root_node,
+        expect.stringContaining('恢复弹窗')
+      );
     });
 
     test('should clear map even if empty', () => {

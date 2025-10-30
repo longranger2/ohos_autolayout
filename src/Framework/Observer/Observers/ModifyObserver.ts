@@ -7,6 +7,7 @@ import Constant from '../../Common/Constant';
 import Framework from '../../Framework';
 import { PopupStateManager } from '../../Popup/PopupStateManager';
 import { PopupLayoutState } from '../../Popup/PopupLayoutState';
+import { PopupWindowRelayout } from '../../Popup/PopupWindowRelayout';
 
 interface AnimationDurations {
     animationDur: number,
@@ -339,6 +340,11 @@ export default class ModifyObserver {
         const removeRecords: MutationRecord[] = [];
         const addRecords: MutationRecord[] = [];
         const attrRecords: MutationRecord[] = [];
+        let popWindow: null | PopupWindowRelayout = null;
+        if (IntelligentLayout.popWindowMap.size > 0) {
+            popWindow = IntelligentLayout.popWindowMap.values().next().value; 
+        }
+        let isNeedRestore: boolean = false;
         
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
@@ -350,6 +356,7 @@ export default class ModifyObserver {
             }
             if (record.type === 'attributes') {
                 attrRecords.push(record);
+                isNeedRestore = isNeedRestore? isNeedRestore: ModifyObserver.checkIfRestore(popWindow, record);
             }
         }
         
@@ -383,8 +390,38 @@ export default class ModifyObserver {
         } else {
             Log.d(`跳过任务触发: 动画延迟=${animationDuration}ms, 移除变更=${hasValidRemove}, 添加变更=${hasValidAdd}`, ModifyObserver.TAG);
         }
+        if (isNeedRestore) {
+            IntelligentLayout.recoverPopwinStyle();   
+        }
         
         Log.d('========== 批处理完成 ==========', ModifyObserver.TAG);
+    }
+
+    private static checkIfRestore(popWindow: PopupWindowRelayout, record: MutationRecord) {
+        let isNeedRestore: boolean = false;
+        if (popWindow != null && popWindow.contains(record.target)) {
+            if (record.attributeName === 'style' && record.target instanceof HTMLElement) {
+                const oldValue = record.oldValue;
+                const newValue = record.target.getAttribute(record.attributeName);
+                Log.d(`mdquan print ${oldValue} change to${newValue}`, ModifyObserver.TAG);
+
+                // 检查translate属性的变化
+                if (oldValue.includes(Constant.translate) && !newValue.includes(Constant.translate)) {
+                    isNeedRestore = true;
+                }
+
+                // 检查display属性的变化
+                if (oldValue.includes('display') && !newValue.includes('display')) {
+                    isNeedRestore = true;
+                }
+
+                let computedStyle = getComputedStyle(record.target);
+                const matrixMatch = computedStyle.transform.match(/matrix$(.*?),(.*?),(.*?),(.*?),(.*?),(.*?)$/);
+                const translateY = matrixMatch ? parseFloat(matrixMatch[6]) : 0;
+                Log.d(`mdquan print translateY ${translateY}`, ModifyObserver.TAG);
+            }
+        }
+        return isNeedRestore;
     }
 
     private static handleAddedNodes(addRecords: MutationRecord[]): boolean {

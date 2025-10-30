@@ -25,6 +25,14 @@ interface BoundingRect {
 }
 
 /**
+ * 节点筛选结果，包含顶层节点和所有子孙节点
+ */
+interface RelevantNodesResult {
+    topLevelNodes: HTMLElement[];    // 顶层节点，用于缩放操作
+    allDescendantNodes: HTMLElement[]; // 所有子孙节点，用于截断检测
+}
+
+/**
  * 弹窗
  * 输入为一个popupInfo
  */
@@ -53,6 +61,7 @@ export class PopupWindowRelayout extends AComponent {
     private isCloseButtonTruncatedByScroll = false;
     private popupDecisionTreeType = PopupDecisionTreeType.Center;
     private equivalentMask: HTMLElement;
+    private contentNodes: HTMLElement[] = []; // 存储弹窗内容主体节点
     private minScaleFactor = CCMConfig.getInstance().getMinScaleFactor() / 100;
     private scaleAnimationDuration = CCMConfig.getInstance().getScaleAnimationDuration();
 
@@ -92,12 +101,17 @@ export class PopupWindowRelayout extends AComponent {
         this.cancellationToken = { cancelled: false, generation: Date.now() };
         const token = this.cancellationToken;
         Log.d(`生成新的取消令牌 (generation: ${token.generation})`, Tag.popupRelayout);
-        
-        const allNodes = this.traverseTree(this.mComponent, []);
-        Log.d(`遍历DOM树，共 ${allNodes.length} 个节点`, Tag.popupRelayout);
+
+        // 使用筛选后的弹窗内容主体节点，而不是所有DOM节点
+        this.contentNodes = this.getContentNodes();
+        const allContentDescendantNodes: HTMLElement[] = [];
+        this.contentNodes.forEach(node => {
+            this.traverseTree(node, allContentDescendantNodes);
+        });
+        Log.d(`获取到 ${this.contentNodes.length} 个弹窗内容主体节点，${allContentDescendantNodes.length} 个弹窗内容子孙节点`, Tag.popupRelayout);
 
         // step1: 计算被截断的节点
-        this.findTruncateNodes(allNodes);
+        this.findTruncateNodes(allContentDescendantNodes);
 
         if (this.truncateNodes.length === 0) {
             Log.d(`未找到被截断的节点，无需布局调整`, Tag.popupRelayout);
@@ -114,7 +128,7 @@ export class PopupWindowRelayout extends AComponent {
         Log.d(`找到 ${this.truncateNodes.length} 个被截断的节点`, Tag.popupRelayout);
 
         // step2: 判断弹窗决策树类型
-        this.popupDecisionTreeType = PopupDecisionTree.judgePopupDecisionTreeType(allNodes, this.popupInfo);
+        this.popupDecisionTreeType = PopupDecisionTree.judgePopupDecisionTreeType(allContentDescendantNodes, this.popupInfo);
         Log.d(`弹窗决策树类型: ${this.popupDecisionTreeType}`, Tag.popupRelayout);
 
         // step3: 恢复背景图片被截断的节点
@@ -153,6 +167,33 @@ export class PopupWindowRelayout extends AComponent {
         Log.d('开始布局约束验证', Tag.popupRelayout);
         //  传递令牌给异步验证
         this.getLayoutConstraintReport(token);
+    }
+
+    /**
+     * 根据弹窗类型获取需要处理的弹窗内容节点
+     * @return {HTMLElement[]} - 弹窗内容节点
+     */
+    private getContentNodes(): HTMLElement[] {
+        Log.d(`开始获取弹窗内容节点，弹窗类型: ${PopupType[this.popupInfo.popup_type]}`, Tag.popupRelayout);
+
+        let topContentNodes: HTMLElement[] = [];
+
+        if (this.popupInfo.popup_type === PopupType.C) {
+            // C型弹窗: 从根节点获取顶层子节点
+            topContentNodes = this.getTopmostChildren(this.mComponent, this.popupInfo.popup_type);
+            Log.d(`C型弹窗: 从根节点获取到 ${topContentNodes.length} 个顶层弹窗内容节点`, Tag.popupRelayout);
+        } else if (this.popupInfo.popup_type === PopupType.B) {
+            // B型弹窗: 从等效mask的父节点获取顶层子节点，并排除mask节点
+            this.equivalentMask = this.getEquivalentMask();
+            const allNodes = this.getTopmostChildren(this.equivalentMask.parentElement, this.popupInfo.popup_type);
+            topContentNodes = allNodes.filter(node => node !== this.equivalentMask);
+            Log.d(`B型弹窗: 从等效mask父节点获取到 ${topContentNodes.length} 个顶层弹窗内容节点 (排除mask后)`, Tag.popupRelayout);
+        } else if (this.popupInfo.popup_type === PopupType.A) {
+            // A型弹窗: 从mask节点获取子节点
+            topContentNodes = this.getTopmostChildren(this.popupInfo.mask_node, this.popupInfo.popup_type);
+            Log.d(`A型弹窗: 从mask节点获取到 ${topContentNodes.length} 个顶层弹窗内容节点`, Tag.popupRelayout);
+        }
+        return topContentNodes;
     }
 
     /**
@@ -322,45 +363,32 @@ export class PopupWindowRelayout extends AComponent {
         // 如果mask和rootNode是同一个节点，则直接缩放rootNode的所有子节点。
         if (this.popupInfo.popup_type === PopupType.C) {
             Log.d('C型弹窗: 缩放根节点的顶层子节点', Tag.popupRelayout);
-            let topNodes = this.getTopmostChildren(this.mComponent, this.popupInfo.popup_type);
-            Log.d(`找到 ${topNodes.length} 个顶层节点`, Tag.popupRelayout);
-            for (let child of topNodes) {
+            for (let child of this.contentNodes) {
                 const childStyle = child.children.length > 0 ? getComputedStyle(child.children[0]) : null;
                 const childRect = child.getBoundingClientRect();
                 const isFixedOrAbsolute = childStyle ? childStyle.position === 'fixed' || childStyle.position === 'absolute' : false;
                 const isZeroSize = childRect.width === 0 || childRect.height === 0;
-                this.scaleChildForTypeC(childStyle, isFixedOrAbsolute, isZeroSize, child, topNodes);
+                this.scaleChildForTypeC(childStyle, isFixedOrAbsolute, isZeroSize, child, this.contentNodes);
             }
         } else if (this.popupInfo.popup_type === PopupType.B) {
             Log.d('B型弹窗: 缩放Mask的兄弟节点', Tag.popupRelayout);
-            this.equivalentMask = this.getEquivalentMask();
-            Log.d(`等效Mask节点: ${this.equivalentMask.className}`, Tag.popupRelayout);
-            // 如果mask和content是兄弟节点，则其他兄弟节点做缩放
-            let topNodes = this.getTopmostChildren(this.equivalentMask.parentElement, this.popupInfo.popup_type);
-            topNodes.filter(node => node !== this.equivalentMask);
-            Log.d(`找到 ${topNodes.length} 个顶层节点`, Tag.popupRelayout);
-            for (let child of topNodes) {
-                if (this.equivalentMask.contains(child)) {
-                    continue;
-                }
+            for (let child of this.contentNodes) {
                 const childStyle = child.children.length > 0 ? getComputedStyle(child.children[0]) : null;
                 const childRect = child.getBoundingClientRect();
                 const isFixedOrAbsolute = childStyle ? childStyle.position === 'fixed' || childStyle.position === 'absolute' : false;
                 const isZeroSize = childRect.width === 0 || childRect.height === 0;
                 if (childStyle && isFixedOrAbsolute && isZeroSize) {
-                    this.scaleGrandChildrenForTypeB(child, topNodes);
+                    this.scaleGrandChildrenForTypeB(child, this.contentNodes);
                 }
                 else {
-                    this.scaleChildForTypeB(child, topNodes);
+                    this.scaleChildForTypeB(child, this.contentNodes);
                 }
             }
         } else if (this.popupInfo.popup_type === PopupType.A) {
             Log.d('A型弹窗: 缩放Mask的子节点', Tag.popupRelayout);
             // 如果mask是rootNode的子节点，content是mask的子节点，则对mask的所有子节点以及它的兄弟节点做缩放
-            let topNodes = this.getTopmostChildren(this.popupInfo.mask_node, this.popupInfo.popup_type);
-            Log.d(`找到 ${topNodes.length} 个顶层节点`, Tag.popupRelayout);
-            for (let child of topNodes) {
-                this.scaleByTransform(child as HTMLElement, this.scale, false, topNodes, false, []);
+            for (let child of this.contentNodes) {
+                this.scaleByTransform(child as HTMLElement, this.scale, false, this.contentNodes, false, []);
                 Log.d(`A型弹窗缩放完成: ${child.className}`, Tag.popupRelayout);
             }
         }
