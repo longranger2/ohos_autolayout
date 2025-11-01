@@ -25,13 +25,27 @@ jest.mock('../src/Debug/Log', () => ({
   },
 }));
 
+const mockActivePopup = {
+  info: null as PopupInfo | null,
+  component: null as PopupWindowRelayout | null,
+};
+
 jest.mock('../src/Framework/IntelligentLayout', () => ({
   __esModule: true,
   default: {
     removePopwinCache: jest.fn(),
     markDirty: jest.fn(),
     recoverPopwinStyle: jest.fn(),
-    popWindowMap: new Map(),
+    getActivePopupInfo: jest.fn(() => mockActivePopup.info),
+    getActivePopupComponent: jest.fn(() => mockActivePopup.component),
+    clearActivePopup: jest.fn(() => {
+      mockActivePopup.info = null;
+      mockActivePopup.component = null;
+    }),
+    cachePopup: jest.fn((info: PopupInfo, component: PopupWindowRelayout) => {
+      mockActivePopup.info = info;
+      mockActivePopup.component = component;
+    }),
   },
 }));
 
@@ -156,7 +170,7 @@ describe('ModifyObserver', () => {
     (Utils.ignoreEle as jest.Mock).mockClear().mockReturnValue(false);
     (global.queueMicrotask as jest.Mock).mockClear();
     mockIsMaskNodeActive.mockReturnValue(true);
-    (IntelligentLayout.popWindowMap as Map<unknown, unknown>).clear();
+    IntelligentLayout.clearActivePopup();
 
     // 重置 ModifyObserver 内部状态
     ModifyObserver.modifyObserver = null;
@@ -1071,7 +1085,8 @@ describe('ModifyObserver', () => {
 
         Object.setPrototypeOf(mockComponent, PopupWindowRelayout.prototype);
 
-        (IntelligentLayout.popWindowMap as Map<PopupInfo, PopupWindowRelayout>).set(popupInfo, mockComponent as unknown as PopupWindowRelayout);
+        mockActivePopup.info = popupInfo;
+        mockActivePopup.component = mockComponent as unknown as PopupWindowRelayout;
 
         mockIsMaskNodeActive.mockReturnValueOnce(false);
 
@@ -1085,7 +1100,7 @@ describe('ModifyObserver', () => {
         expect(mockComponent.cancelPendingValidation).toHaveBeenCalled();
         expect(mockComponent.restoreStyles).toHaveBeenCalled();
         expect(resetStateSpy).toHaveBeenCalledWith(root, expect.stringContaining('遮罩节点失效'));
-        expect(IntelligentLayout.popWindowMap.size).toBe(0);
+        expect(mockActivePopup.info).toBeNull();
         expect(ObserverHandler.postTask).toHaveBeenCalled();
 
         resetStateSpy.mockRestore();

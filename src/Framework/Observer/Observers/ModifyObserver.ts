@@ -191,10 +191,9 @@ export default class ModifyObserver {
      * @private
      */
     private static findPopupRoot(element: HTMLElement): HTMLElement | null {
-        for (const [popupInfo] of IntelligentLayout.popWindowMap.entries()) {
-            if (popupInfo.root_node && popupInfo.root_node.contains(element)) {
-                return popupInfo.root_node;
-            }
+        const popupInfo = IntelligentLayout.getActivePopupInfo();
+        if (popupInfo?.root_node && popupInfo.root_node.contains(element)) {
+            return popupInfo.root_node;
         }
         return null;
     }
@@ -343,8 +342,9 @@ export default class ModifyObserver {
         const addRecords: MutationRecord[] = [];
         const attrRecords: MutationRecord[] = [];
         let popWindow: null | PopupWindowRelayout = null;
-        if (IntelligentLayout.popWindowMap.size > 0) {
-            popWindow = IntelligentLayout.popWindowMap.values().next().value; 
+        const cachedComponent = IntelligentLayout.getActivePopupComponent();
+        if (cachedComponent instanceof PopupWindowRelayout) {
+            popWindow = cachedComponent;
         }
         let isNeedRestore: boolean = false;
         
@@ -629,18 +629,17 @@ export default class ModifyObserver {
      * 确保弹窗生命周期与遮罩节点状态保持一致
      */
     private static ensurePopupLifecycle(): boolean {
-        if (IntelligentLayout.popWindowMap.size === 0) {
+        const popupInfo = IntelligentLayout.getActivePopupInfo();
+        if (!popupInfo) {
             return false;
         }
 
-        for (const [popupInfo] of IntelligentLayout.popWindowMap.entries()) {
-            if (!ModifyObserver.isPopupLifecycleValid(popupInfo)) {
-                const maskClass = popupInfo?.mask_node?.className || 'unknown-mask';
-                const reason = `检测到遮罩节点失效: ${maskClass}`;
-                ModifyObserver.resetPopupLifecycle(reason);
-                ObserverHandler.postTask();
-                return true;
-            }
+        if (!ModifyObserver.isPopupLifecycleValid(popupInfo)) {
+            const maskClass = popupInfo?.mask_node?.className || 'unknown-mask';
+            const reason = `检测到遮罩节点失效: ${maskClass}`;
+            ModifyObserver.resetPopupLifecycle(reason);
+            ObserverHandler.postTask();
+            return true;
         }
 
         return false;
@@ -666,18 +665,19 @@ export default class ModifyObserver {
     private static resetPopupLifecycle(reason: string): void {
         Log.d(`重置弹窗生命周期: ${reason}`, ModifyObserver.TAG);
 
-        for (const [popupInfo, component] of IntelligentLayout.popWindowMap.entries()) {
-            if (component instanceof PopupWindowRelayout) {
-                component.cancelPendingValidation();
-                component.restoreStyles();
-            }
+        const popupInfo = IntelligentLayout.getActivePopupInfo();
+        const component = IntelligentLayout.getActivePopupComponent();
 
-            if (popupInfo?.root_node) {
-                PopupStateManager.resetState(popupInfo.root_node, reason);
-            }
+        if (component instanceof PopupWindowRelayout) {
+            component.cancelPendingValidation();
+            component.restoreStyles();
         }
 
-        IntelligentLayout.popWindowMap.clear();
+        if (popupInfo?.root_node) {
+            PopupStateManager.resetState(popupInfo.root_node, reason);
+        }
+
+        IntelligentLayout.clearActivePopup();
         ModifyObserver.cancelAllAnimationTimeouts();
     }
 }
