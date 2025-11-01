@@ -4,6 +4,10 @@ import ObserverHandler from '../src/Framework/Observer/ObserverHandler';
 import StyleCleaner from '../src/Framework/Common/Style/Setter/StyleCleaner';
 import Utils from '../src/Framework/Common/Utils/Utils';
 import Constant from '../src/Framework/Common/Constant';
+import { PopupStateManager } from '../src/Framework/Popup/PopupStateManager';
+import { PopupType } from '../src/Framework/Popup/PopupType';
+import { PopupInfo } from '../src/Framework/Popup/PopupInfo';
+import { PopupWindowRelayout } from '../src/Framework/Popup/PopupWindowRelayout';
 
 // 1. 定义 Mock MutationObserver 的接口
 interface MockMutationObserver {
@@ -26,6 +30,8 @@ jest.mock('../src/Framework/IntelligentLayout', () => ({
   default: {
     removePopwinCache: jest.fn(),
     markDirty: jest.fn(),
+    recoverPopwinStyle: jest.fn(),
+    popWindowMap: new Map(),
   },
 }));
 
@@ -56,6 +62,15 @@ jest.mock('../src/Framework/Common/Constant', () => ({
   default: {
     none: 'none',
     discrepancy: 1,
+  },
+}));
+
+const mockIsMaskNodeActive = jest.fn().mockReturnValue(true);
+
+jest.mock('../src/Framework/Popup/PopupWindowDetector', () => ({
+  __esModule: true,
+  PopupWindowDetector: {
+    isMaskNodeActive: (...args: unknown[]) => mockIsMaskNodeActive(...args),
   },
 }));
 
@@ -140,6 +155,8 @@ describe('ModifyObserver', () => {
     (StyleCleaner.resetParent as jest.Mock).mockClear();
     (Utils.ignoreEle as jest.Mock).mockClear().mockReturnValue(false);
     (global.queueMicrotask as jest.Mock).mockClear();
+    mockIsMaskNodeActive.mockReturnValue(true);
+    (IntelligentLayout.popWindowMap as Map<unknown, unknown>).clear();
 
     // 重置 ModifyObserver 内部状态
     ModifyObserver.modifyObserver = null;
@@ -1018,6 +1035,60 @@ describe('ModifyObserver', () => {
         expect(Utils.ignoreEle).toHaveBeenCalledWith(child1);
         expect(Utils.ignoreEle).toHaveBeenCalledWith(child2);
         expect(ObserverHandler.postTask).toHaveBeenCalled();
+      });
+
+      it('should reset popup lifecycle when mask node becomes inactive', () => {
+        const root = document.createElement('div');
+        const mask = document.createElement('div');
+        mask.className = 'test-mask';
+        root.appendChild(mask);
+
+        const popupInfo: PopupInfo = {
+          root_node: root,
+          mask_node: mask,
+          content_node: root,
+          popup_type: PopupType.A,
+          root_position: 'fixed',
+          root_zindex: 10,
+          has_mask: true,
+          root_screen_area_ratio: 1,
+          root_is_visiable: true,
+          has_close_button: true,
+          mask_area_ratio: 1,
+          mask_position: 'fixed',
+          mask_zindex: 10,
+          stickyTop_height: 0,
+          stickyBottom_height: 0,
+        };
+
+        const mockComponent: Partial<PopupWindowRelayout> & {
+          cancelPendingValidation: jest.Mock;
+          restoreStyles: jest.Mock;
+        } = {
+          cancelPendingValidation: jest.fn(),
+          restoreStyles: jest.fn(),
+        };
+
+        Object.setPrototypeOf(mockComponent, PopupWindowRelayout.prototype);
+
+        (IntelligentLayout.popWindowMap as Map<PopupInfo, PopupWindowRelayout>).set(popupInfo, mockComponent as unknown as PopupWindowRelayout);
+
+        mockIsMaskNodeActive.mockReturnValueOnce(false);
+
+        const resetStateSpy = jest.spyOn(PopupStateManager, 'resetState');
+
+        const records = [createMutationRecord({ type: 'childList' })];
+
+        // @ts-ignore accessing private method for testing lifecycle management
+        ModifyObserver.processBatch(records);
+
+        expect(mockComponent.cancelPendingValidation).toHaveBeenCalled();
+        expect(mockComponent.restoreStyles).toHaveBeenCalled();
+        expect(resetStateSpy).toHaveBeenCalledWith(root, expect.stringContaining('遮罩节点失效'));
+        expect(IntelligentLayout.popWindowMap.size).toBe(0);
+        expect(ObserverHandler.postTask).toHaveBeenCalled();
+
+        resetStateSpy.mockRestore();
       });
     });
   });

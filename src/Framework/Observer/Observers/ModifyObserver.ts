@@ -8,6 +8,8 @@ import Framework from '../../Framework';
 import { PopupStateManager } from '../../Popup/PopupStateManager';
 import { PopupLayoutState } from '../../Popup/PopupLayoutState';
 import { PopupWindowRelayout } from '../../Popup/PopupWindowRelayout';
+import { PopupInfo } from '../../Popup/PopupInfo';
+import { PopupWindowDetector } from '../../Popup/PopupWindowDetector';
 
 interface AnimationDurations {
     animationDur: number,
@@ -394,6 +396,12 @@ export default class ModifyObserver {
             IntelligentLayout.recoverPopwinStyle();   
         }
         
+        const lifecycleReset = ModifyObserver.ensurePopupLifecycle();
+
+        if (lifecycleReset) {
+            Log.d('检测到遮罩节点失效，已重置弹窗生命周期', ModifyObserver.TAG);
+        }
+
         Log.d('========== 批处理完成 ==========', ModifyObserver.TAG);
     }
 
@@ -615,5 +623,61 @@ export default class ModifyObserver {
         }
         
         return { animationDur: animDur, transitionDur: transDur, total: total };
+    }
+
+    /**
+     * 确保弹窗生命周期与遮罩节点状态保持一致
+     */
+    private static ensurePopupLifecycle(): boolean {
+        if (IntelligentLayout.popWindowMap.size === 0) {
+            return false;
+        }
+
+        for (const [popupInfo] of IntelligentLayout.popWindowMap.entries()) {
+            if (!ModifyObserver.isPopupLifecycleValid(popupInfo)) {
+                const maskClass = popupInfo?.mask_node?.className || 'unknown-mask';
+                const reason = `检测到遮罩节点失效: ${maskClass}`;
+                ModifyObserver.resetPopupLifecycle(reason);
+                ObserverHandler.postTask();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static isPopupLifecycleValid(popupInfo: PopupInfo): boolean {
+        if (!popupInfo) {
+            return false;
+        }
+
+        if (!popupInfo.root_node || !popupInfo.root_node.isConnected) {
+            Log.d('弹窗根节点已脱离文档结构', ModifyObserver.TAG);
+            return false;
+        }
+
+        if (!PopupWindowDetector.isMaskNodeActive(popupInfo.mask_node)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static resetPopupLifecycle(reason: string): void {
+        Log.d(`重置弹窗生命周期: ${reason}`, ModifyObserver.TAG);
+
+        for (const [popupInfo, component] of IntelligentLayout.popWindowMap.entries()) {
+            if (component instanceof PopupWindowRelayout) {
+                component.cancelPendingValidation();
+                component.restoreStyles();
+            }
+
+            if (popupInfo?.root_node) {
+                PopupStateManager.resetState(popupInfo.root_node, reason);
+            }
+        }
+
+        IntelligentLayout.popWindowMap.clear();
+        ModifyObserver.cancelAllAnimationTimeouts();
     }
 }
