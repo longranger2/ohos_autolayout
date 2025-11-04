@@ -115,8 +115,9 @@ export default class Constant {
     static readonly discrepancy = 1;
     static readonly maxCloseButtonSizeRatio = 0.15;
     static readonly bottomCloseButtonRatio = 0.6;
-    static readonly flexDelHeightThreshold = 2;
 
+    static readonly flexDelHeightThreshold = 2;
+    
     static readonly ERR_CODE_GAPS = 100;
     static readonly ERR_CODE_OVERFLOW = 50;
     static readonly ERR_CODE_OFFSET = 10;
@@ -182,4 +183,3 @@ export const HwTag = {
     FORCE_CSS: 'force_css',
     ORIGIN_HEIGHT: 'origin_height',
 };
-

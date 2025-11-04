@@ -179,6 +179,11 @@ export default class LayoutUtils{
         Log.d(`========== 检测节点截断 ==========`, Tag.layoutUtils);
         Log.d(`节点: ${node.className || node.tagName}`, Tag.layoutUtils);
         
+        // 带滚动条的scroll的子节点不做截断判定
+        if (this.isScrollChildOverflow(node)) {
+
+            return false;
+        }
         // 1. 获取视口尺寸
         const viewportHeight = window.innerHeight;
 
@@ -231,6 +236,23 @@ export default class LayoutUtils{
         const result = isTopTruncated || isBottomTruncated;
         Log.d(`${result ? '✂️ 存在截断' : '✅ 无截断'} (考虑吸顶吸底组件)`, Tag.layoutUtils);
         return result;
+    }
+
+    /**
+     * 检测是否是带滚动条的scroll的子节点
+     * @param node 
+     * @returns 
+     */
+    static isScrollChildOverflow(node: Element): boolean {
+        const style = window.getComputedStyle(node.parentElement);
+
+        const overflowY = style.overflowY;
+        const isScrollableY = (overflowY === 'scroll' || overflowY === 'auto');
+        
+        // 检查内容是否溢出
+        const hasVerticalScroll = node.parentElement.scrollHeight > node.parentElement.clientHeight;
+        
+        return isScrollableY && hasVerticalScroll;
     }
 
     /**
