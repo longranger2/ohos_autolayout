@@ -334,9 +334,9 @@ export default class ModifyObserver {
             return;
         }
         
-        const isMaskNodeExistence = ModifyObserver.checkMaskNodeExistence();
+        const isMaskNodeValid = ModifyObserver.checkMaskNodeExistence();
 
-        if (!isMaskNodeExistence) {
+        if (!isMaskNodeValid) {
             Log.d('检测到遮罩节点失效，已重置弹窗', ModifyObserver.TAG);
             return;
         }
@@ -560,17 +560,45 @@ export default class ModifyObserver {
     }
 
     static cssTimeToMs(str: string): number {
-        if (!str || str === '0s' || str === '0ms') {
+        if (!str) {
             return 0;
         }
-        const match = str.trim().match(/^([\d.]+)(s|ms)$/);
-        if (!match) {
-            Log.d(`无效的CSS时间格式: ${str}`, ModifyObserver.TAG);
+
+        const segments = str.split(',').map(item => item.trim()).filter(item => item.length > 0);
+        if (segments.length === 0) {
             return 0;
         }
-        const [, num, unit] = match;
-        const ms = unit === 's' ? parseFloat(num) * 1000 : parseFloat(num);
-        return ms;
+
+        let maxDuration = 0;
+        let hasValidValue = false;
+
+        for (const segment of segments) {
+            if (segment === '0s' || segment === '0ms') {
+                hasValidValue = true;
+                continue;
+            }
+
+            const match = segment.match(/^([\d.]+)(s|ms)$/);
+            if (!match) {
+                Log.d(`无效的CSS时间格式: ${segment}`, ModifyObserver.TAG);
+                continue;
+            }
+
+            const [, num, unit] = match;
+            const parsed = parseFloat(num);
+            if (Number.isNaN(parsed)) {
+                Log.d(`无效的CSS时间格式: ${segment}`, ModifyObserver.TAG);
+                continue;
+            }
+
+            hasValidValue = true;
+            const ms = unit === 's' ? parsed * 1000 : parsed;
+            if (ms > maxDuration) {
+                maxDuration = ms;
+            }
+        }
+
+        return hasValidValue ? maxDuration : 0;
     }
   
     // 获取元素当前正在运行的动画总时长（animation + transition）
@@ -595,7 +623,7 @@ export default class ModifyObserver {
     private static checkMaskNodeExistence(): boolean {
         const popupInfo = IntelligentLayout.getActivePopupWindowInfo();
         if (!popupInfo) {
-            return false;
+            return true;
         }
 
         if (!ModifyObserver.isMaskNodeValid(popupInfo)) {
