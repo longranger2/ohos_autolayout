@@ -12,33 +12,45 @@ import { PopupLayoutState } from './Popup/PopupLayoutState';
 export default class IntelligentLayout {
     static TAG = Tag.intelligentLayout;
 
-    private static activePopupWindows: Map<HTMLElement, { popupInfo: PopupInfo; popupComponent: AComponent }> = new Map();
+    private static activePopupWindowMap: Map<PopupInfo, AComponent> = new Map();
 
-    /**
-     * 返回指定弹窗根节点的最新 PopupInfo 缓存
-     * - 传入具体 popupRoot 时：先按 key 命中，未命中则查找被其包含的缓存弹窗
-     * - 未传参时：兼容旧流程，返回缓存中的首个弹窗信息
-     * 未命中则返回 null，调用方可据此触发重新检测
-     */
-    public static getActivePopupWindowInfo(popupRoot?: HTMLElement): PopupInfo | null {
+    private static findEntry(popupRoot?: HTMLElement): { popupInfo: PopupInfo; popupComponent: AComponent } | null {
         if (!popupRoot) {
-            const iterator = IntelligentLayout.activePopupWindows.values().next();
-            return iterator.done ? null : iterator.value.popupInfo;
+            const iterator = IntelligentLayout.activePopupWindowMap.entries().next();
+            if (iterator.done) {
+                return null;
+            }
+            const [popupInfo, popupComponent] = iterator.value;
+            return { popupInfo, popupComponent };
         }
 
-        const directHit = IntelligentLayout.activePopupWindows.get(popupRoot);
-        if (directHit) {
-            return directHit.popupInfo;
-        }
-
-        for (const entry of IntelligentLayout.activePopupWindows.values()) {
-            const candidateRoot = entry.popupInfo?.root_node;
-            if (candidateRoot && popupRoot.contains(candidateRoot)) {
-                return entry.popupInfo;
+        for (const [popupInfo, popupComponent] of IntelligentLayout.activePopupWindowMap.entries()) {
+            if (popupInfo?.root_node === popupRoot) {
+                return { popupInfo, popupComponent };
             }
         }
 
         return null;
+    }
+
+    private static removeEntries(predicate: (popupInfo: PopupInfo) => boolean): void {
+        const entries = Array.from(IntelligentLayout.activePopupWindowMap.keys());
+        entries.forEach(info => {
+            if (predicate(info)) {
+                IntelligentLayout.activePopupWindowMap.delete(info);
+            }
+        });
+    }
+
+    /**
+     * 返回指定弹窗根节点的最新 PopupInfo 缓存
+     * - 未传参：兼容旧流程，返回缓存中的首个弹窗信息
+     * - 传入 popupRoot：按 root_node 精确匹配缓存条目
+     * 未命中则返回 null，调用方可据此触发重新检测
+     */
+    public static getActivePopupWindowInfo(popupRoot?: HTMLElement): PopupInfo | null {
+        const entry = IntelligentLayout.findEntry(popupRoot);
+        return entry?.popupInfo ?? null;
     }
 
     /**
@@ -46,41 +58,23 @@ export default class IntelligentLayout {
      * 查找规则同 getActivePopupWindowInfo，未命中时返回 null
      */
     public static getActivePopupWindowComponent(popupRoot?: HTMLElement): AComponent | null {
-        if (!popupRoot) {
-            const iterator = IntelligentLayout.activePopupWindows.values().next();
-            return iterator.done ? null : iterator.value.popupComponent;
-        }
-
-        const directHit = IntelligentLayout.activePopupWindows.get(popupRoot);
-        if (directHit) {
-            return directHit.popupComponent;
-        }
-
-        for (const entry of IntelligentLayout.activePopupWindows.values()) {
-            const candidateRoot = entry.popupInfo?.root_node;
-            if (candidateRoot && popupRoot.contains(candidateRoot)) {
-                return entry.popupComponent;
-            }
-        }
-
-        return null;
+        const entry = IntelligentLayout.findEntry(popupRoot);
+        return entry?.popupComponent ?? null;
     }
 
     /**
      * 获取当前缓存的所有弹窗信息快照，用于遍历/批处理场景
      */
     public static getActivePopupInfos(): PopupInfo[] {
-        return Array.from(IntelligentLayout.activePopupWindows.values(), entry => entry.popupInfo);
+        return Array.from(IntelligentLayout.activePopupWindowMap.keys());
     }
 
     /**
-     * 将弹窗快照与对应组件写入缓存，key 为弹窗根节点
+     * 将弹窗快照与对应组件写入缓存，以 PopupInfo 作为 key，同时替换相同 root 节点的旧条目
      */
     private static setActivePopupWindow(popupInfo: PopupInfo, component: AComponent): void {
-        IntelligentLayout.activePopupWindows.set(popupInfo.root_node, {
-            popupInfo,
-            popupComponent: component,
-        });
+        IntelligentLayout.removeEntries(info => info.root_node === popupInfo.root_node);
+        IntelligentLayout.activePopupWindowMap.set(popupInfo, component);
     }
 
     /**
@@ -88,10 +82,10 @@ export default class IntelligentLayout {
      */
     public static clearActivePopupWindow(popupRoot?: HTMLElement): void {
         if (popupRoot) {
-            IntelligentLayout.activePopupWindows.delete(popupRoot);
+            IntelligentLayout.removeEntries(info => info.root_node === popupRoot || popupRoot.contains(info.root_node));
             return;
         }
-        IntelligentLayout.activePopupWindows.clear();
+        IntelligentLayout.activePopupWindowMap.clear();
     }
     
     public static intelligentLayout(root: HTMLElement): void {
@@ -123,19 +117,19 @@ export default class IntelligentLayout {
     public static removePopwinCache(node: HTMLElement): boolean {
         let removed = false;
 
-        for (const [root, entry] of IntelligentLayout.activePopupWindows.entries()) {
-            const popupInfo = entry.popupInfo;
-            if (!popupInfo?.root_node) {
-                continue;
+        const cachedInfos = Array.from(IntelligentLayout.activePopupWindowMap.keys());
+        cachedInfos.forEach(info => {
+            if (!info?.root_node) {
+                return;
             }
 
-            if (node.contains(popupInfo.root_node)) {
-                Log.info(`弹窗消失: ${popupInfo.root_node}`, IntelligentLayout.TAG);
-                PopupStateManager.clearState(popupInfo.root_node);
-                IntelligentLayout.clearActivePopupWindow(root);
+            if (node.contains(info.root_node)) {
+                Log.info(`弹窗消失: ${info.root_node}`, IntelligentLayout.TAG);
+                PopupStateManager.clearState(info.root_node);
+                IntelligentLayout.clearActivePopupWindow(info.root_node);
                 removed = true;
             }
-        }
+        });
 
         return removed;
     }
@@ -178,7 +172,7 @@ export default class IntelligentLayout {
         }
 
         // 节点变化，就重新刷新界面
-        for (const { popupInfo, popupComponent } of IntelligentLayout.activePopupWindows.values()) {
+        for (const [popupInfo, popupComponent] of IntelligentLayout.activePopupWindowMap.entries()) {
             if (!popupInfo?.root_node || !popupComponent || popupComponent.isDirty()) {
                 continue;
             }
@@ -191,16 +185,16 @@ export default class IntelligentLayout {
 
     static resetPopWindows(reason: string): void {
         Log.d('========== 重置所有弹窗状态并取消异步任务 ==========', IntelligentLayout.TAG);
-        const entries = Array.from(IntelligentLayout.activePopupWindows.entries());
+        const entries = Array.from(IntelligentLayout.activePopupWindowMap.entries());
 
         if (entries.length === 0) {
             IntelligentLayout.clearActivePopupWindow();
             return;
         }
 
-        entries.forEach(([root, { popupInfo, popupComponent }]) => {
+        entries.forEach(([popupInfo, popupComponent]) => {
             if (!popupInfo?.root_node || !popupComponent) {
-                IntelligentLayout.clearActivePopupWindow(root);
+                IntelligentLayout.clearActivePopupWindow(popupInfo?.root_node);
                 return;
             }
 
@@ -213,7 +207,7 @@ export default class IntelligentLayout {
 
             PopupStateManager.resetState(popupInfo.root_node, reason);
             popupComponent.setDirty(true);
-            IntelligentLayout.clearActivePopupWindow(root);
+            IntelligentLayout.clearActivePopupWindow(popupInfo.root_node);
         });
 
         Log.d('所有弹窗状态重置完成', IntelligentLayout.TAG);
