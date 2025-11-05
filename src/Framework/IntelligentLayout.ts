@@ -71,37 +71,27 @@ export default class IntelligentLayout {
     public static intelligentLayout(root: HTMLElement): void {
         Log.info('进入 intelligentLayout', IntelligentLayout.TAG);
 
-        const existingPopupInfos = IntelligentLayout.getActivePopupInfos();
-        const detectedPopup = PopupWindowDetector.findPopups(root);
-
-        if (detectedPopup) {
-            Log.d(`popupInfo root_node: ${detectedPopup.root_node?.className}`, IntelligentLayout.TAG);
+        const cachedInfos = IntelligentLayout.getActivePopupInfos();
+        if (cachedInfos.length > 0) {
+            cachedInfos.forEach(popup => IntelligentLayout.calculateForPopWin(popup));
         } else {
-            Log.d('popupInfo root_node: null', IntelligentLayout.TAG);
-        }
+            const detectedPopup = PopupWindowDetector.findPopups(root);
 
-        const popupsToProcess = new Map<HTMLElement, PopupInfo>();
-        existingPopupInfos.forEach(info => {
-            if (info?.root_node) {
-                popupsToProcess.set(info.root_node, info);
+            if (detectedPopup) {
+                Log.d(`popupInfo root_node: ${detectedPopup.root_node?.className}`, IntelligentLayout.TAG);
+                IntelligentLayout.calculateForPopWin(detectedPopup);
+            } else {
+                Log.d('popupInfo root_node: null', IntelligentLayout.TAG);
+
+                let metrics: LayoutConstraintMetrics = {
+                    resultCode: -2,
+                    errorMsg: 'no popup found',
+                    duration: 0,
+                    report: 'no popup found',
+                };
+                // @ts-ignore
+                window.layoutConstraintResult = metrics;
             }
-        });
-
-        if (detectedPopup?.root_node) {
-            popupsToProcess.set(detectedPopup.root_node, detectedPopup);
-        }
-
-        if (popupsToProcess.size > 0) {
-            popupsToProcess.forEach(popup => IntelligentLayout.calculateForPopWin(popup));
-        } else {
-            let metrics: LayoutConstraintMetrics = {
-                resultCode: -2,
-                errorMsg: 'no popup found',
-                duration: 0,
-                report: 'no popup found',
-            };
-            // @ts-ignore
-            window.layoutConstraintResult = metrics;
         }
         Log.info('离开 intelligentLayout', IntelligentLayout.TAG);
     }
