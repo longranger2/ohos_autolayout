@@ -16,28 +16,54 @@ export default class IntelligentLayout {
 
     /**
      * 返回指定弹窗根节点的最新 PopupInfo 缓存
-     * 未传入或未命中时返回 null，调用方可据此触发重新检测
+     * - 传入具体 popupRoot 时：先按 key 命中，未命中则查找被其包含的缓存弹窗
+     * - 未传参时：兼容旧流程，返回缓存中的首个弹窗信息
+     * 未命中则返回 null，调用方可据此触发重新检测
      */
     public static getActivePopupWindowInfo(popupRoot?: HTMLElement): PopupInfo | null {
         if (!popupRoot) {
-            return null;
+            const iterator = IntelligentLayout.activePopupWindows.values().next();
+            return iterator.done ? null : iterator.value.popupInfo;
         }
 
-        const entry = IntelligentLayout.activePopupWindows.get(popupRoot);
-        return entry?.popupInfo ?? null;
+        const directHit = IntelligentLayout.activePopupWindows.get(popupRoot);
+        if (directHit) {
+            return directHit.popupInfo;
+        }
+
+        for (const entry of IntelligentLayout.activePopupWindows.values()) {
+            const candidateRoot = entry.popupInfo?.root_node;
+            if (candidateRoot && popupRoot.contains(candidateRoot)) {
+                return entry.popupInfo;
+            }
+        }
+
+        return null;
     }
 
     /**
      * 返回指定弹窗根节点对应的 PopupWindowRelayout 实例
-     * 若未命中则返回 null，之后会在 calculateForPopWin 内创建新实例
+     * 查找规则同 getActivePopupWindowInfo，未命中时返回 null
      */
     public static getActivePopupWindowComponent(popupRoot?: HTMLElement): AComponent | null {
         if (!popupRoot) {
-            return null;
+            const iterator = IntelligentLayout.activePopupWindows.values().next();
+            return iterator.done ? null : iterator.value.popupComponent;
         }
 
-        const entry = IntelligentLayout.activePopupWindows.get(popupRoot);
-        return entry?.popupComponent ?? null;
+        const directHit = IntelligentLayout.activePopupWindows.get(popupRoot);
+        if (directHit) {
+            return directHit.popupComponent;
+        }
+
+        for (const entry of IntelligentLayout.activePopupWindows.values()) {
+            const candidateRoot = entry.popupInfo?.root_node;
+            if (candidateRoot && popupRoot.contains(candidateRoot)) {
+                return entry.popupComponent;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -71,27 +97,25 @@ export default class IntelligentLayout {
     public static intelligentLayout(root: HTMLElement): void {
         Log.info('进入 intelligentLayout', IntelligentLayout.TAG);
 
-        const cachedInfos = IntelligentLayout.getActivePopupInfos();
-        if (cachedInfos.length > 0) {
-            cachedInfos.forEach(popup => IntelligentLayout.calculateForPopWin(popup));
-        } else {
-            const detectedPopup = PopupWindowDetector.findPopups(root);
+        const cachedPopup = IntelligentLayout.getActivePopupWindowInfo(root);
+        const popupInfo = cachedPopup ?? PopupWindowDetector.findPopups(root);
 
-            if (detectedPopup) {
-                Log.d(`popupInfo root_node: ${detectedPopup.root_node?.className}`, IntelligentLayout.TAG);
-                IntelligentLayout.calculateForPopWin(detectedPopup);
-            } else {
-                Log.d('popupInfo root_node: null', IntelligentLayout.TAG);
-
-                let metrics: LayoutConstraintMetrics = {
-                    resultCode: -2,
-                    errorMsg: 'no popup found',
-                    duration: 0,
-                    report: 'no popup found',
-                };
-                // @ts-ignore
-                window.layoutConstraintResult = metrics;
+        if (popupInfo) {
+            if (!cachedPopup) {
+                Log.d(`popupInfo root_node: ${popupInfo.root_node?.className}`, IntelligentLayout.TAG);
             }
+            IntelligentLayout.calculateForPopWin(popupInfo);
+        } else {
+            Log.d('popupInfo root_node: null', IntelligentLayout.TAG);
+
+            let metrics: LayoutConstraintMetrics = {
+                resultCode: -2,
+                errorMsg: 'no popup found',
+                duration: 0,
+                report: 'no popup found',
+            };
+            // @ts-ignore
+            window.layoutConstraintResult = metrics;
         }
         Log.info('离开 intelligentLayout', IntelligentLayout.TAG);
     }
