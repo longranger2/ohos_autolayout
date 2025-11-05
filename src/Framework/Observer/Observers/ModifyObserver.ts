@@ -190,9 +190,11 @@ export default class ModifyObserver {
      * @private
      */
     private static findPopupRoot(element: HTMLElement): HTMLElement | null {
-        const popupInfo = IntelligentLayout.getActivePopupWindowInfo();
-        if (popupInfo?.root_node && popupInfo.root_node.contains(element)) {
-            return popupInfo.root_node;
+        const activePopups = IntelligentLayout.getActivePopupInfos();
+        for (const popupInfo of activePopups) {
+            if (popupInfo?.root_node && popupInfo.root_node.contains(element)) {
+                return popupInfo.root_node;
+            }
         }
         return null;
     }
@@ -621,20 +623,28 @@ export default class ModifyObserver {
      * @returns Mask节点存在则返回 true，否则返回 false
      */
     private static checkMaskNodeExistence(): boolean {
-        const popupInfo = IntelligentLayout.getActivePopupWindowInfo();
-        if (!popupInfo) {
+        const activePopups = IntelligentLayout.getActivePopupInfos();
+        if (activePopups.length === 0) {
             return true;
         }
 
-        if (!ModifyObserver.isMaskNodeValid(popupInfo)) {
-            const maskClass = popupInfo?.mask_node?.className || 'unknown-mask';
-            const reason = `检测到遮罩节点失效: ${maskClass}`;
-            ModifyObserver.resetPopup(reason);
-            ObserverHandler.postTask();
-            return false;
+        let allValid = true;
+        let postedTask = false;
+
+        for (const popupInfo of activePopups) {
+            if (!ModifyObserver.isMaskNodeValid(popupInfo)) {
+                const maskClass = popupInfo?.mask_node?.className || 'unknown-mask';
+                const reason = `检测到遮罩节点失效: ${maskClass}`;
+                ModifyObserver.resetPopup(popupInfo, reason);
+                allValid = false;
+                if (!postedTask) {
+                    ObserverHandler.postTask();
+                    postedTask = true;
+                }
+            }
         }
 
-        return true;
+        return allValid;
     }
 
     private static isMaskNodeValid(popupInfo: PopupInfo): boolean {
@@ -654,21 +664,21 @@ export default class ModifyObserver {
         return true;
     }
 
-    private static resetPopup(reason: string): void {
+    private static resetPopup(popupInfo: PopupInfo, reason: string): void {
         Log.d(`重置弹窗: ${reason}`, ModifyObserver.TAG);
 
-        const popupInfo = IntelligentLayout.getActivePopupWindowInfo();
-        const component = IntelligentLayout.getActivePopupWindowComponent();
+        if (!popupInfo?.root_node) {
+            return;
+        }
+
+        const component = IntelligentLayout.getActivePopupWindowComponent(popupInfo.root_node);
 
         if (component instanceof PopupWindowRelayout) {
             component.cancelPendingValidation();
             component.restoreStyles();
         }
 
-        if (popupInfo?.root_node) {
-            PopupStateManager.resetState(popupInfo.root_node, reason);
-        }
-
-        IntelligentLayout.clearActivePopupWindow();
+        PopupStateManager.resetState(popupInfo.root_node, reason);
+        IntelligentLayout.clearActivePopupWindow(popupInfo.root_node);
     }
 }

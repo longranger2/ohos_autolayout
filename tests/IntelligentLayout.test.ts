@@ -106,25 +106,26 @@ describe('IntelligentLayout (single popup cache)', () => {
     expect(IntelligentLayout.getActivePopupWindowComponent()).toBeNull();
   });
 
-  it('calculateForPopWin caches component and clears dirty flag', () => {
-    const info = createPopupInfo();
+    it('calculateForPopWin caches component and triggers layout', () => {
+      const info = createPopupInfo();
 
-    IntelligentLayout.calculateForPopWin(info);
+      IntelligentLayout.calculateForPopWin(info);
 
-    const cachedInfo = IntelligentLayout.getActivePopupWindowInfo();
-    const cachedComponent = IntelligentLayout.getActivePopupWindowComponent();
+      const cachedInfo = IntelligentLayout.getActivePopupWindowInfo(info.root_node);
+      const cachedComponent = IntelligentLayout.getActivePopupWindowComponent(info.root_node) as any;
 
-    expect(getRelayoutMock()).toHaveBeenCalledWith(info);
-    expect(cachedInfo).toBe(info);
-    expect(cachedComponent).not.toBeNull();
-    expect((cachedComponent as any).isDirty()).toBe(false);
-  });
-;
+      expect(getRelayoutMock()).toHaveBeenCalledWith(info);
+      expect(cachedInfo).toBe(info);
+      expect(cachedComponent).not.toBeNull();
+      expect(cachedComponent.intelligenceLayout).toHaveBeenCalled();
+      expect(IntelligentLayout.getActivePopupInfos()).toHaveLength(1);
+    });
 
-  it('markDirty marks cached component when target is inside popup', () => {
-    const info = createPopupInfo();
-    IntelligentLayout.calculateForPopWin(info);
-    const component = IntelligentLayout.getActivePopupWindowComponent() as any;
+    it('markDirty marks cached component when target is inside popup', () => {
+      const info = createPopupInfo();
+      IntelligentLayout.calculateForPopWin(info);
+      const component = IntelligentLayout.getActivePopupWindowComponent(info.root_node) as any;
+      component.setDirty(false);
     const child = document.createElement('div');
     info.root_node.appendChild(child);
 
@@ -134,10 +135,10 @@ describe('IntelligentLayout (single popup cache)', () => {
     expect(component.setDirty).toHaveBeenCalledWith(true);
   });
 
-  it('markDirty skips when component already dirty or target outside popup', () => {
-    const info = createPopupInfo();
-    IntelligentLayout.calculateForPopWin(info);
-    const component = IntelligentLayout.getActivePopupWindowComponent() as any;
+    it('markDirty skips when component already dirty or target outside popup', () => {
+      const info = createPopupInfo();
+      IntelligentLayout.calculateForPopWin(info);
+      const component = IntelligentLayout.getActivePopupWindowComponent(info.root_node) as any;
 
     // Make component report dirty
     component.setDirty(true);
@@ -147,9 +148,9 @@ describe('IntelligentLayout (single popup cache)', () => {
     expect(component.setDirty).toHaveBeenLastCalledWith(true);
   });
 
-  it('removePopwinCache clears active popup and state when node contains root', () => {
-    const info = createPopupInfo();
-    IntelligentLayout.calculateForPopWin(info);
+    it('removePopwinCache clears active popup and state when node contains root', () => {
+      const info = createPopupInfo();
+      IntelligentLayout.calculateForPopWin(info);
 
     const parent = document.createElement('div');
     parent.appendChild(info.root_node);
@@ -158,13 +159,14 @@ describe('IntelligentLayout (single popup cache)', () => {
 
     expect(removed).toBe(true);
     expect(getStateManager().clearState).toHaveBeenCalledWith(info.root_node);
-    expect(IntelligentLayout.getActivePopupWindowInfo()).toBeNull();
+      expect(IntelligentLayout.getActivePopupWindowInfo(info.root_node)).toBeNull();
+      expect(IntelligentLayout.getActivePopupInfos()).toHaveLength(0);
   });
 
-  it('resetAllPopWindows cancels validation and restores styles', () => {
-    const info = createPopupInfo();
-    IntelligentLayout.calculateForPopWin(info);
-    const component = IntelligentLayout.getActivePopupWindowComponent() as any;
+    it('resetAllPopWindows cancels validation and restores styles', () => {
+      const info = createPopupInfo();
+      IntelligentLayout.calculateForPopWin(info);
+      const component = IntelligentLayout.getActivePopupWindowComponent(info.root_node) as any;
 
     IntelligentLayout.resetPopWindows('初始化');
 
@@ -172,15 +174,43 @@ describe('IntelligentLayout (single popup cache)', () => {
     expect(getStateManager().resetState).toHaveBeenCalledWith(info.root_node, expect.any(String));
     expect(component.restoreStyles).toHaveBeenCalled();
     expect(component.setDirty).toHaveBeenCalledWith(true);
-    expect(IntelligentLayout.getActivePopupWindowInfo()).toBeNull();
+      expect(IntelligentLayout.getActivePopupWindowInfo(info.root_node)).toBeNull();
+      expect(IntelligentLayout.getActivePopupInfos()).toHaveLength(0);
   });
 
-  it('reInit delegates to recoverPopwinStyle and clears cache', () => {
-    const info = createPopupInfo();
-    IntelligentLayout.calculateForPopWin(info);
+    it('reInit delegates to recoverPopwinStyle and clears cache', () => {
+      const info = createPopupInfo();
+      IntelligentLayout.calculateForPopWin(info);
 
     IntelligentLayout.reInit('初始化');
 
-    expect(IntelligentLayout.getActivePopupWindowInfo()).toBeNull();
+      expect(IntelligentLayout.getActivePopupWindowInfo(info.root_node)).toBeNull();
+      expect(IntelligentLayout.getActivePopupInfos()).toHaveLength(0);
   });
+
+    it('supports caching multiple popups independently', () => {
+      const first = createPopupInfo();
+      const second = createPopupInfo();
+      second.root_node.className = 'popup-root-second';
+
+      IntelligentLayout.calculateForPopWin(first);
+      IntelligentLayout.calculateForPopWin(second);
+
+      expect(getRelayoutMock()).toHaveBeenCalledTimes(2);
+      expect(IntelligentLayout.getActivePopupInfos()).toHaveLength(2);
+
+      const firstParent = document.createElement('div');
+      firstParent.appendChild(first.root_node);
+      const secondParent = document.createElement('div');
+      secondParent.appendChild(second.root_node);
+
+      const removedFirst = IntelligentLayout.removePopwinCache(firstParent);
+      expect(removedFirst).toBe(true);
+      expect(IntelligentLayout.getActivePopupWindowInfo(first.root_node)).toBeNull();
+      expect(IntelligentLayout.getActivePopupWindowInfo(second.root_node)).toBe(second);
+
+      const removedSecond = IntelligentLayout.removePopwinCache(secondParent);
+      expect(removedSecond).toBe(true);
+      expect(IntelligentLayout.getActivePopupInfos()).toHaveLength(0);
+    });
 });
