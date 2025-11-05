@@ -14,6 +14,10 @@ export default class IntelligentLayout {
 
     private static activePopupWindows: Map<HTMLElement, { popupInfo: PopupInfo; popupComponent: AComponent }> = new Map();
 
+    /**
+     * 返回指定弹窗根节点的最新 PopupInfo 缓存
+     * 未传入或未命中时返回 null，调用方可据此触发重新检测
+     */
     public static getActivePopupWindowInfo(popupRoot?: HTMLElement): PopupInfo | null {
         if (!popupRoot) {
             return null;
@@ -23,6 +27,10 @@ export default class IntelligentLayout {
         return entry?.popupInfo ?? null;
     }
 
+    /**
+     * 返回指定弹窗根节点对应的 PopupWindowRelayout 实例
+     * 若未命中则返回 null，之后会在 calculateForPopWin 内创建新实例
+     */
     public static getActivePopupWindowComponent(popupRoot?: HTMLElement): AComponent | null {
         if (!popupRoot) {
             return null;
@@ -32,10 +40,16 @@ export default class IntelligentLayout {
         return entry?.popupComponent ?? null;
     }
 
+    /**
+     * 获取当前缓存的所有弹窗信息快照，用于遍历/批处理场景
+     */
     public static getActivePopupInfos(): PopupInfo[] {
         return Array.from(IntelligentLayout.activePopupWindows.values(), entry => entry.popupInfo);
     }
 
+    /**
+     * 将弹窗快照与对应组件写入缓存，key 为弹窗根节点
+     */
     private static setActivePopupWindow(popupInfo: PopupInfo, component: AComponent): void {
         IntelligentLayout.activePopupWindows.set(popupInfo.root_node, {
             popupInfo,
@@ -43,6 +57,9 @@ export default class IntelligentLayout {
         });
     }
 
+    /**
+     * 移除指定弹窗的缓存；未传入参数时清空全部缓存
+     */
     public static clearActivePopupWindow(popupRoot?: HTMLElement): void {
         if (popupRoot) {
             IntelligentLayout.activePopupWindows.delete(popupRoot);
