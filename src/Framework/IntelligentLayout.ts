@@ -15,23 +15,21 @@ export default class IntelligentLayout {
     private static activePopupWindows: Map<HTMLElement, { popupInfo: PopupInfo; popupComponent: AComponent }> = new Map();
 
     public static getActivePopupWindowInfo(popupRoot?: HTMLElement): PopupInfo | null {
-        if (popupRoot) {
-            const entry = IntelligentLayout.activePopupWindows.get(popupRoot);
-            return entry?.popupInfo ?? null;
+        if (!popupRoot) {
+            return null;
         }
 
-        const iterator = IntelligentLayout.activePopupWindows.values().next();
-        return iterator.done ? null : iterator.value.popupInfo;
+        const entry = IntelligentLayout.activePopupWindows.get(popupRoot);
+        return entry?.popupInfo ?? null;
     }
 
     public static getActivePopupWindowComponent(popupRoot?: HTMLElement): AComponent | null {
-        if (popupRoot) {
-            const entry = IntelligentLayout.activePopupWindows.get(popupRoot);
-            return entry?.popupComponent ?? null;
+        if (!popupRoot) {
+            return null;
         }
 
-        const iterator = IntelligentLayout.activePopupWindows.values().next();
-        return iterator.done ? null : iterator.value.popupComponent;
+        const entry = IntelligentLayout.activePopupWindows.get(popupRoot);
+        return entry?.popupComponent ?? null;
     }
 
     public static getActivePopupInfos(): PopupInfo[] {
