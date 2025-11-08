@@ -440,7 +440,7 @@ describe('PopupDecisionTree', () => {
       expect(topNodes).toEqual([child2, child3]);
     });
 
-    it('should return correct element and handle ties in findMainContentNode', () => {
+    it('should return correct element and handle ties in pickMainContentNode', () => {
       const root = document.createElement('div');
       const mask = document.createElement('div');
       const contentA = document.createElement('div');
@@ -452,14 +452,14 @@ describe('PopupDecisionTree', () => {
       setStyle(contentA, { zIndex: '1' });
       setStyle(contentB, { zIndex: '2' });
       
-      const popupInfo = makePopupInfo({ root_node: root, mask_node: mask, popup_type: PopupType.B });
+      const contentNodes = [contentA, contentB];
       
       // @ts-ignore
-      expect(PopupDecisionTree.findMainContentNode(root, popupInfo)).toBe(contentB);
+      expect(PopupDecisionTree.pickMainContentNode(contentNodes)).toBe(contentB);
       
       setStyle(contentA, { zIndex: '2' });
       // @ts-ignore
-      expect(PopupDecisionTree.findMainContentNode(root, popupInfo)).toBeNull();
+      expect(PopupDecisionTree.pickMainContentNode(contentNodes)).toBeNull();
     });
   });
 
@@ -638,7 +638,7 @@ describe('PopupDecisionTree', () => {
         popup_type: PopupType.B,
       });
       
-      expect(PopupDecisionTree.isModalWin([content], root, popupInfo)).toBe(true);
+    expect(PopupDecisionTree.isModalWin([content], root, popupInfo, [content])).toBe(true);
       expect(popupInfo.content_node).toBe(content);
     });
   });
@@ -673,7 +673,7 @@ describe('PopupDecisionTree', () => {
       });
       
       visibleSiblingsMock.mockReturnValueOnce([]);
-      const bottomDecision = PopupDecisionTree.judgePopupDecisionTreeType([content], popupInfo);
+    const bottomDecision = PopupDecisionTree.judgePopupDecisionTreeType([content], popupInfo, [content]);
       expect(bottomDecision).toBe(PopupDecisionTreeType.Bottom);
       // @ts-ignore
       expect(window.popWin).toBe('bottom');
@@ -730,10 +730,11 @@ describe('PopupDecisionTree', () => {
         )
       ).toBe(true);
       
-      const overlapDecision = PopupDecisionTree.judgePopupDecisionTreeType(
-        [overlapContent, closeButton],
-        overlapInfo
-      );
+    const overlapDecision = PopupDecisionTree.judgePopupDecisionTreeType(
+      [overlapContent, closeButton],
+      overlapInfo,
+      [overlapContent]
+    );
       expect(overlapDecision).toBe(PopupDecisionTreeType.Center_Button_Overlap);
       // @ts-ignore
       expect(window.popWin).toBe('center');
@@ -743,15 +744,16 @@ describe('PopupDecisionTree', () => {
       setStyle(overlapContent, { position: 'relative', bottom: 'auto', top: '200px' });
       
       expect(
-        PopupDecisionTree.judgePopupDecisionTreeType(
-          [overlapContent, closeButton],
-          makePopupInfo({
-            root_node: overlapRoot,
-            mask_node: overlapMask,
-            content_node: overlapContent,
-            popup_type: PopupType.A,
-          })
-        )
+      PopupDecisionTree.judgePopupDecisionTreeType(
+        [overlapContent, closeButton],
+        makePopupInfo({
+          root_node: overlapRoot,
+          mask_node: overlapMask,
+          content_node: overlapContent,
+          popup_type: PopupType.A,
+        }),
+        [overlapContent]
+      )
       ).toBe(PopupDecisionTreeType.Center);
     });
   });
@@ -948,7 +950,7 @@ describe('PopupDecisionTree', () => {
       root.appendChild(mask);
       
       const popupInfo = makePopupInfo({ root_node: root, mask_node: mask, popup_type: PopupType.B });
-      expect(PopupDecisionTree.isModalWin([], root, popupInfo)).toBe(false);
+    expect(PopupDecisionTree.isModalWin([], root, popupInfo, [])).toBe(false);
     });
 
     it('should return false when close button matches center pattern in isModalWin', () => {
@@ -965,7 +967,7 @@ describe('PopupDecisionTree', () => {
       setRect(close, { top: window.innerHeight - 40, left: 0, width: 20, height: 20 });
       
       const popupInfo = makePopupInfo({ root_node: root, mask_node: mask, popup_type: PopupType.B });
-      expect(PopupDecisionTree.isModalWin([close], root, popupInfo)).toBe(false);
+    expect(PopupDecisionTree.isModalWin([close], root, popupInfo, [content])).toBe(false);
     });
 
     it('should route to type C handler in isModalWin', () => {
@@ -986,7 +988,7 @@ describe('PopupDecisionTree', () => {
         popup_type: PopupType.C,
       });
       
-      expect(PopupDecisionTree.isModalWin([content], root, popupInfo)).toBe(true);
+    expect(PopupDecisionTree.isModalWin([content], root, popupInfo, [content])).toBe(true);
     });
   });
     it('should return false when close button criteria not met', () => {
@@ -1045,48 +1047,36 @@ describe('PopupDecisionTree', () => {
       expect((PopupDecisionTree).isModalForTypeB(info)).toBe(true);
       spy.mockRestore();
     });
-  it('should return null when mask path invalid', () => {
-    const root = document.createElement('div');
-    const mask = document.createElement('div');
-    const popupInfo = makePopupInfo({ root_node: root, mask_node: mask, popup_type: PopupType.B });
-    root.appendChild(document.createElement('div'));
+  it('should return null when content node list is empty', () => {
     // @ts-ignore
-    expect(PopupDecisionTree.findMainContentNode(root, popupInfo)).toBeNull();
+    expect(PopupDecisionTree.pickMainContentNode([])).toBeNull();
   });
-  it('should climb mask ancestors before detection', () => {
-    const root = document.createElement('div');
+  it('should select the content node with the highest z-index when provided a list', () => {
     const wrapper = document.createElement('div');
-    const mask = document.createElement('div');
     const content = document.createElement('div');
-    wrapper.appendChild(mask);
-    root.append(wrapper, content);
-    const popupInfo = makePopupInfo({ root_node: root, mask_node: mask, popup_type: PopupType.B });
+    setStyle(wrapper, { zIndex: '1' });
+    setStyle(content, { zIndex: '5' });
+    const contentNodes = [wrapper, content];
     // @ts-ignore
-    expect(PopupDecisionTree.findMainContentNode(root, popupInfo)).toBe(content);
+    expect(PopupDecisionTree.pickMainContentNode(contentNodes)).toBe(content);
   });
   it('should return null for equal z-index ties', () => {
-    const root = document.createElement('div');
-    const mask = document.createElement('div');
     const a = document.createElement('div');
     const b = document.createElement('div');
-      root.append(mask, a, b);
-      const popupInfo = makePopupInfo({ root_node: root, mask_node: mask, popup_type: PopupType.A });
+    const contentNodes = [a, b];
     setStyle(a, { zIndex: '2' });
     setStyle(b, { zIndex: '2' });
     // @ts-ignore
-    expect(PopupDecisionTree.findMainContentNode(root, popupInfo)).toBeNull();
+    expect(PopupDecisionTree.pickMainContentNode(contentNodes)).toBeNull();
   });
   it('should treat auto z-index as baseline', () => {
-    const root = document.createElement('div');
-    const mask = document.createElement('div');
     const autoNode = document.createElement('div');
     const topNode = document.createElement('div');
-    root.append(mask, autoNode, topNode);
-    const popupInfo = makePopupInfo({ root_node: root, mask_node: mask, popup_type: PopupType.B });
+    const contentNodes = [autoNode, topNode];
     setStyle(autoNode, { zIndex: 'auto' });
     setStyle(topNode, { zIndex: '5' });
     // @ts-ignore
-    expect(PopupDecisionTree.findMainContentNode(root, popupInfo)).toBe(topNode);
+    expect(PopupDecisionTree.pickMainContentNode(contentNodes)).toBe(topNode);
   });
     it('should return false on special center condition', () => {
       const root = document.createElement('div');
@@ -1337,23 +1327,11 @@ describe('PopupDecisionTree', () => {
       expect(PopupDecisionTree.getTopmostChildren(parent, popupInfo)).toEqual([child]);
     });
 
-    it('should handle popup type A in main content detection', () => {
-      const root = document.createElement('div');
-      const mask = document.createElement('div');
+    it('should return the sole content node when only one provided', () => {
       const content = document.createElement('div');
-      
-      root.append(mask, content);
-      
-      const popupInfo = makePopupInfo({
-        root_node: root, 
-        mask_node: mask, 
-        popup_type: PopupType.A 
-      });
-      
       setStyle(content, { zIndex: '5' });
-      
       // @ts-ignore
-      expect(PopupDecisionTree.findMainContentNode(root, popupInfo)).toBe(content);
+      expect(PopupDecisionTree.pickMainContentNode([content])).toBe(content);
     });
 
     it('should handle popup type A in modal detection', () => {
@@ -1372,7 +1350,7 @@ describe('PopupDecisionTree', () => {
       
       setStyle(content, { zIndex: '5' });
       
-      expect(PopupDecisionTree.isModalWin([content], root, popupInfo)).toBe(false);
+      expect(PopupDecisionTree.isModalWin([content], root, popupInfo, [content])).toBe(false);
     });
 
     it('should handle modal content with children', () => {
@@ -2049,16 +2027,11 @@ describe('PopupDecisionTree', () => {
       setStyle(contentA, { zIndex: '5' });
       setStyle(contentB, { zIndex: '5' }); // Same z-index as contentA
       
-      const popupInfo = makePopupInfo({ 
-        root_node: root, 
-        mask_node: mask, 
-        popup_type: PopupType.B 
-      });
+      const contentNodes = [contentA, contentB];
       
-      // This should trigger line 509: } else if (zIndex === maxZIndex) {
-      // and result in zIndexCount > 1, causing the function to return null
+      // 这会触发 zIndexCount > 1，expect 返回 null
       // @ts-ignore
-      const result = PopupDecisionTree.findMainContentNode(root, popupInfo);
+      const result = PopupDecisionTree.pickMainContentNode(contentNodes);
       expect(result).toBeNull(); // Should return null when multiple nodes have same max z-index
     });
 
@@ -2076,18 +2049,11 @@ describe('PopupDecisionTree', () => {
       setStyle(nodeB, { zIndex: '5' }); // Highest z-index (tie)
       setStyle(nodeC, { zIndex: '5' }); // Highest z-index (tie)
       
-      const popupInfo = makePopupInfo({ 
-        root_node: root, 
-        mask_node: mask, 
-        popup_type: PopupType.B 
-      });
+      const contentNodes = [nodeA, nodeB, nodeC];
       
-      // This should trigger:
-      // 1. First iteration: nodeA has zIndex=3, maxZIndex becomes 3, zIndexCount=1
-      // 2. Second iteration: nodeB has zIndex=5 > maxZIndex(3), maxZIndex=5, zIndexCount=1  
-      // 3. Third iteration: nodeC has zIndex=5 === maxZIndex(5), this triggers line 509, zIndexCount=2
+      // 这会触发 zIndexCount > 1，expect 返回 null
       // @ts-ignore
-      const result = PopupDecisionTree.findMainContentNode(root, popupInfo);
+      const result = PopupDecisionTree.pickMainContentNode(contentNodes);
       
       // Should return null because zIndexCount > 1
       expect(result).toBeNull();
