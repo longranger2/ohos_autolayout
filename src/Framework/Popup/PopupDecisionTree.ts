@@ -53,7 +53,11 @@ export class PopupDecisionTree {
      * @param popupInfo - 包含弹窗核心信息的对象，其中最重要的属性是 `root_node` (弹窗的根节点)。
      * @returns {PopupDecisionTreeType} - 返回一个 PopupDecisionTreeType 枚举值，表示该弹窗的最终分类（例如 Center, Bottom, Center_Button_Overlap 等）。
      */
-    public static judgePopupDecisionTreeType(allNodes: HTMLElement[], popupInfo: PopupInfo): PopupDecisionTreeType {
+    public static judgePopupDecisionTreeType(
+        allNodes: HTMLElement[],
+        popupInfo: PopupInfo,
+        contentNodes: HTMLElement[]
+    ): PopupDecisionTreeType {
         const rootNode = popupInfo.root_node;
         
         const isPickerPopup = PopupDecisionTree.isTimePickerPopup(rootNode);
@@ -61,7 +65,7 @@ export class PopupDecisionTree {
             return PopupDecisionTreeType.Picker;
         }
         
-        const isBottomPopup = PopupDecisionTree.isModalWin(allNodes, rootNode, popupInfo);
+        const isBottomPopup = PopupDecisionTree.isModalWin(allNodes, rootNode, popupInfo, contentNodes);
 
         if (isBottomPopup) {
             // @ts-ignore
@@ -510,9 +514,18 @@ export class PopupDecisionTree {
      * 3、boxSizing == 'border-box'
      * 4、top可能有radius，bottom没有radius
      */
-    static isModalWin(allNodes: HTMLElement[], rootNode: HTMLElement, popupInfo: PopupInfo): boolean {
-        // 查找作为主要内容的节点（z-index 最高）。
-        const contentNode = this.findMainContentNode(rootNode, popupInfo);
+    static isModalWin(
+        allNodes: HTMLElement[],
+        rootNode: HTMLElement,
+        popupInfo: PopupInfo,
+        contentNodes: HTMLElement[]
+    ): boolean {
+        if (!contentNodes || contentNodes.length === 0) {
+            return false;
+        }
+
+        // 通过传入的内容节点列表选取主要内容节点（z-index 最高）。
+        const contentNode = this.pickMainContentNode(contentNodes);
         if (!contentNode) {
             return false;
         }
@@ -593,36 +606,25 @@ export class PopupDecisionTree {
      * 在 B 类型弹窗的子节点中，根据 z-index 找到作为“前景内容”的节点。
      * @returns {HTMLElement | null} 返回找到的内容节点，如果找不到或存在多个 z-index 最高的节点，则返回 null。
      */
-    private static findMainContentNode(rootNode: HTMLElement, popupInfo: PopupInfo): HTMLElement | null {
-        // 找到作为直接子节点的 mask 元素
-        let directMaskChild = popupInfo.mask_node;
-        if (popupInfo.popup_type === PopupType.B) {
-            while (directMaskChild.parentElement !== rootNode) {
-                directMaskChild = directMaskChild.parentElement!;
-                if (!directMaskChild) {
-                    return null; // 如果找不到，则结构异常
-                }
-            }
-        }
-
-        // 过滤掉 mask，剩下的就是内容节点
-        const contentNodes = Array.from(rootNode.children).filter(node => node !== directMaskChild) as HTMLElement[];
-
-        if (contentNodes.length === 0) {
+    private static pickMainContentNode(contentNodes: HTMLElement[]): HTMLElement | null {
+        if (!contentNodes || contentNodes.length === 0) {
             return null;
         }
+
         if (contentNodes.length === 1) {
             return contentNodes[0];
         }
-        
-        // 如果有多个内容节点，通过 z-index 判断哪一个在最上层
+
         let topNode: HTMLElement | null = null;
         let maxZIndex = -Infinity;
         let zIndexCount = 0;
 
         for (const node of contentNodes) {
             const style = window.getComputedStyle(node);
-            const zIndex = style.zIndex === 'auto' ? 0 : parseFloat(style.zIndex);
+            let zIndex = style.zIndex === 'auto' ? 0 : parseFloat(style.zIndex);
+            if (Number.isNaN(zIndex)) {
+                zIndex = 0;
+            }
             if (zIndex > maxZIndex) {
                 maxZIndex = zIndex;
                 topNode = node;

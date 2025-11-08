@@ -129,7 +129,11 @@ export class PopupWindowRelayout extends AComponent {
         Log.d(`找到 ${this.truncateNodes.length} 个被截断的节点`, Tag.popupRelayout);
 
         // step2: 判断弹窗决策树类型
-        this.popupDecisionTreeType = PopupDecisionTree.judgePopupDecisionTreeType(allContentDescendantNodes, this.popupInfo);
+        this.popupDecisionTreeType = PopupDecisionTree.judgePopupDecisionTreeType(
+            allContentDescendantNodes,
+            this.popupInfo,
+            this.contentNodes
+        );
         Log.d(`弹窗决策树类型: ${this.popupDecisionTreeType}`, Tag.popupRelayout);
 
         // step3: 计算缩放系数
