@@ -115,6 +115,7 @@ export default class Constant {
     static readonly discrepancy = 1;
     static readonly maxCloseButtonSizeRatio = 0.15;
     static readonly bottomCloseButtonRatio = 0.6;
+    static readonly centerCloseButtonToleranceRatio = 0.15;
 
     static readonly flexDelHeightThreshold = 2;
     

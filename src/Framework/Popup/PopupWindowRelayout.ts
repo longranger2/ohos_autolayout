@@ -982,12 +982,23 @@ export class PopupWindowRelayout extends AComponent {
         const closeButton = closeElements[0] as HTMLElement;
         Log.d(`找到关闭按钮: ${closeButton.className}`, Tag.popupRelayout);
         
+        const rootRect = this.mComponent.getBoundingClientRect();
+        const buttonRect = closeButton.getBoundingClientRect();
+        const popupCenterX = rootRect.left + rootRect.width / 2;
+        const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+        const centerTolerance = rootRect.width * Constant.centerCloseButtonToleranceRatio;
+
+        if (Math.abs(buttonCenterX - popupCenterX) > centerTolerance) {
+            Log.d(`关闭按钮未位于弹窗中心附近 (diff=${Math.abs(buttonCenterX - popupCenterX).toFixed(2)}, tolerance=${centerTolerance.toFixed(2)}), 跳过修复`, Tag.popupRelayout);
+            return;
+        }
+
         const buttonStyle = getComputedStyle(closeButton);
         // 刷新needLayoutConstraintNodes
         this.needLayoutConstraintNodes.add(closeButton);
         const currentTransform = buttonStyle.transform === Constant.none ? '' : buttonStyle.transform;
         let translateY: number = 0;
-        const buttonTop = closeButton.getBoundingClientRect().top;
+        const buttonTop = buttonRect.top;
         const bottomNodeStyle = getComputedStyle(this.bottomNode);
         const bottomNodeBottom = this.bottomNode.getBoundingClientRect().bottom;
         if (closeButton === this.bottomNode) {
