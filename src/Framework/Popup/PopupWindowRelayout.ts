@@ -984,10 +984,12 @@ export class PopupWindowRelayout extends AComponent {
         
         const rootRect = this.mComponent.getBoundingClientRect();
         const buttonRect = closeButton.getBoundingClientRect();
-        const bottomRegionTop = rootRect.top + rootRect.height * Constant.bottomCloseButtonRatio;
+        const popupCenterX = rootRect.left + rootRect.width / 2;
+        const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+        const centerTolerance = rootRect.width * Constant.centerCloseButtonToleranceRatio;
 
-        if (buttonRect.top < bottomRegionTop) {
-            Log.d(`关闭按钮不在弹窗下方 (top=${buttonRect.top.toFixed(2)}, bottomRegionTop=${bottomRegionTop.toFixed(2)}), 跳过修复`, Tag.popupRelayout);
+        if (Math.abs(buttonCenterX - popupCenterX) > centerTolerance) {
+            Log.d(`关闭按钮未位于弹窗中心附近 (diff=${Math.abs(buttonCenterX - popupCenterX).toFixed(2)}, tolerance=${centerTolerance.toFixed(2)}), 跳过修复`, Tag.popupRelayout);
             return;
         }
 
