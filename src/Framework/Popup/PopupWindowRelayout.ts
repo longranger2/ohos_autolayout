@@ -55,6 +55,7 @@ export class PopupWindowRelayout extends AComponent {
     private contentNodes: HTMLElement[] = []; // 存储弹窗内容主体节点
     private minScaleFactor = CCMConfig.getInstance().getMinScaleFactor() / 100;
     private scaleAnimationDuration = CCMConfig.getInstance().getScaleAnimationDuration();
+    private scrollNodes: HTMLElement[] = [];  // 带滚动条的节点
 
     constructor(popupInfo: PopupInfo) {
         super(popupInfo.root_node);
@@ -301,21 +302,12 @@ export class PopupWindowRelayout extends AComponent {
                 tmpNode,
                 NodeFilter.SHOW_ELEMENT,  // 或 NodeFilter.SHOW_ELEMENT 只获取元素节点
                 {
-                    acceptNode(node) {
+                    acceptNode: (node) => {
                         if (!(node instanceof HTMLElement)) {
                             return NodeFilter.FILTER_REJECT;
                         }
                         // 如果是一个可以滚动的列表，则子元素不纳入缩放系数的计算
-                        const style = window.getComputedStyle(node.parentElement);
-
-                        const overflowY = style.overflowY;
-                        const isScrollableY = (overflowY === 'scroll' || overflowY === 'auto');
-
-                        // 检查内容是否溢出
-                        const hasVerticalScroll = node.parentElement.scrollHeight > node.parentElement.clientHeight;
-
-                        // 综合考虑
-                        if (isScrollableY && hasVerticalScroll) {
+                        if (LayoutUtils.isOverflowScrollChild(node, this.scrollNodes)) {
                             return NodeFilter.FILTER_REJECT;
                         }
 
@@ -502,6 +494,9 @@ export class PopupWindowRelayout extends AComponent {
         Log.d('开始查找被截断的节点', Tag.popupRelayout);
         // 1. 查找所有符合条件的节点
         const tmpTruncateNodes = allNodes.filter(node => {
+            if (LayoutUtils.isOverflowScrollChild(node, this.scrollNodes)) {
+                return false;
+            }
             return LayoutUtils.isNodeTruncated(node, this.popupInfo);
         });
         Log.d(`初步筛选出 ${tmpTruncateNodes.length} 个被截断的节点`, Tag.popupRelayout);
@@ -524,6 +519,9 @@ export class PopupWindowRelayout extends AComponent {
      */
     private traverseTree(node: HTMLElement, result: HTMLElement[]): HTMLElement[] {
         result.push(node);
+        if (LayoutUtils.isOverflowScroll(node)) {
+            this.scrollNodes.push(node);
+        }
         for (let i = 0; i < node.childNodes.length; i++) {
             if (node.childNodes[i] instanceof HTMLElement) {
                 this.traverseTree(node.childNodes[i] as HTMLElement, result);
@@ -906,14 +904,14 @@ export class PopupWindowRelayout extends AComponent {
         Array.from(element.children).forEach(child => {
             let childStyle = getComputedStyle(child);
             let childRect = child.getBoundingClientRect();
-            if (childStyle.position != Constant.absolute && childStyle.position != Constant.fixed) {
+            if (childStyle.position !== Constant.absolute && childStyle.position !== Constant.fixed) {
                 childMinTop = Math.min(childRect.top - parseFloat(childStyle.marginTop), childMinTop);
                 childMaxBottom = Math.max(childRect.bottom + parseFloat(childStyle.marginBottom), childMaxBottom);
                 cnt++;
             }
         });
 
-        if (cnt > 1 && childMinTop != Infinity &&
+        if (cnt > 1 && childMinTop !== Infinity &&
             Math.abs(childMaxBottom - childMinTop - parseFloat(elementStyle.height)) < Constant.flexDelHeightThreshold) {
             return true;
         }
@@ -948,7 +946,7 @@ export class PopupWindowRelayout extends AComponent {
         flexContainers.forEach(container => {
             Array.from(container.children).forEach(child => {
                 let childStyle = getComputedStyle(child);
-                if (childStyle.position != Constant.absolute && childStyle.position != Constant.fixed) {
+                if (childStyle.position !== Constant.absolute && childStyle.position !== Constant.fixed) {
                     StyleSetter.setStyle(child as HTMLElement, Constant.flex_shrink, '0');
                     this.needRestoreStyleNodes.add(child as HTMLElement);
                     totalProcessed++;
