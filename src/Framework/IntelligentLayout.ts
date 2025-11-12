@@ -16,6 +16,7 @@ export default class IntelligentLayout {
         popupInfo: null,
         popupComponent: null,
     };
+    private static shouldRefreshActivePopup: boolean = false;
 
     public static getActivePopupWindowInfo(): PopupInfo | null {
         return IntelligentLayout.activePopupWindow.popupInfo;
@@ -32,12 +33,44 @@ export default class IntelligentLayout {
     public static clearActivePopupWindow(): void {
         IntelligentLayout.activePopupWindow = { popupInfo: null, popupComponent: null };
     }
+
+    public static requestActivePopupRefresh(reason: string): void {
+        if (IntelligentLayout.shouldRefreshActivePopup) {
+            return;
+        }
+        Log.d(`请求刷新弹窗: ${reason}`, IntelligentLayout.TAG);
+        IntelligentLayout.shouldRefreshActivePopup = true;
+    }
+
+    public static hasActivePopupRefreshRequest(): boolean {
+        return IntelligentLayout.shouldRefreshActivePopup;
+    }
     
     public static intelligentLayout(root: HTMLElement): void {
         Log.info('进入 intelligentLayout', IntelligentLayout.TAG);
 
         const activePopup = IntelligentLayout.getActivePopupWindowInfo();
-        const popupInfo = activePopup ?? PopupWindowDetector.findPopups(root);
+        let popupInfo: PopupInfo | null = activePopup ?? null;
+
+        if (IntelligentLayout.shouldRefreshActivePopup || !activePopup) {
+            const detectedPopup = PopupWindowDetector.findPopups(root);
+            IntelligentLayout.shouldRefreshActivePopup = false;
+
+            if (detectedPopup) {
+                const activeRoot = activePopup?.root_node;
+                if (activeRoot && activeRoot !== detectedPopup.root_node) {
+                    Log.d(
+                        `检测到新的顶层弹窗: ${activeRoot.className} -> ${detectedPopup.root_node.className}`,
+                        IntelligentLayout.TAG
+                    );
+                    IntelligentLayout.resetPopWindows('检测到新的顶层弹窗');
+                }
+                popupInfo = detectedPopup;
+            } else {
+                popupInfo = activePopup ?? null;
+            }
+        }
+
         Log.d(`popupInfo root_node: ${popupInfo?.root_node?.className}`, IntelligentLayout.TAG);
 
         if (popupInfo != null) {
@@ -84,9 +117,20 @@ export default class IntelligentLayout {
         const activePopupInfo = IntelligentLayout.getActivePopupWindowInfo();
         let activePopupComponent = IntelligentLayout.getActivePopupWindowComponent();
 
-        if (!activePopupInfo || activePopupInfo !== popupInfo) {
+        if (!activePopupInfo || activePopupInfo.root_node !== popupInfo.root_node) {
+            if (activePopupComponent instanceof PopupWindowRelayout && activePopupInfo) {
+                activePopupComponent.cancelPendingValidation();
+                activePopupComponent.restoreStyles();
+            }
             activePopupComponent = new PopupWindowRelayout(popupInfo);
             IntelligentLayout.setActivePopupWindow(popupInfo, activePopupComponent);
+        } else if (activePopupComponent) {
+            if (activePopupInfo !== popupInfo) {
+                IntelligentLayout.setActivePopupWindow(popupInfo, activePopupComponent);
+            }
+            if (activePopupComponent instanceof PopupWindowRelayout) {
+                activePopupComponent.updatePopupInfo(popupInfo);
+            }
         }
 
         if (activePopupComponent && activePopupComponent.isDirty()) {

@@ -68,6 +68,12 @@ export class PopupWindowRelayout extends AComponent {
         this.mDirty = dirty;
     }
 
+    public updatePopupInfo(popupInfo: PopupInfo): void {
+        this.popupInfo = popupInfo;
+        this.root = popupInfo.root_node;
+        this.mComponent = popupInfo.root_node;
+    }
+
     public intelligenceLayout(): void {
         if (this.mComponent === null) {
             Log.d('组件为空，跳过智能布局', Tag.popupRelayout);

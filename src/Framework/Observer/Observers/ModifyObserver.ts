@@ -197,6 +197,159 @@ export default class ModifyObserver {
         return null;
     }
 
+    private static detectNewPopupCandidates(addRecords: MutationRecord[], attrRecords: MutationRecord[]): void {
+        const activePopup = IntelligentLayout.getActivePopupWindowInfo();
+        if (!activePopup?.root_node) {
+            return;
+        }
+
+        for (let i = 0; i < addRecords.length; i++) {
+            const record = addRecords[i];
+            for (let j = 0; j < record.addedNodes.length; j++) {
+                const node = record.addedNodes[j];
+                if (node instanceof HTMLElement) {
+                    ModifyObserver.maybeRequestPopupRefresh(node);
+                }
+            }
+        }
+
+        for (let i = 0; i < attrRecords.length; i++) {
+            const target = attrRecords[i].target;
+            if (target instanceof HTMLElement) {
+                ModifyObserver.maybeRequestPopupRefresh(target);
+            }
+        }
+    }
+
+    private static maybeRequestPopupRefresh(node: HTMLElement): void {
+        if (!node || !(node instanceof HTMLElement) || !node.isConnected) {
+            return;
+        }
+
+        const activePopup = IntelligentLayout.getActivePopupWindowInfo();
+        if (!activePopup?.root_node) {
+            return;
+        }
+
+        if (activePopup.root_node.contains(node)) {
+            return;
+        }
+
+        if (IntelligentLayout.hasActivePopupRefreshRequest()) {
+            return;
+        }
+
+        if (ModifyObserver.isPotentialPopupNode(node)) {
+            IntelligentLayout.requestActivePopupRefresh(`检测到新的候选弹窗节点: ${node.className || node.tagName}`);
+            return;
+        }
+
+        const descendantCandidate = ModifyObserver.findPotentialPopupInDescendants(node);
+        if (descendantCandidate) {
+            IntelligentLayout.requestActivePopupRefresh(`检测到新的候选弹窗子节点: ${descendantCandidate.className || descendantCandidate.tagName}`);
+            return;
+        }
+
+        const parent = node.parentElement;
+        if (
+            parent &&
+            parent !== document.body &&
+            parent !== document.documentElement &&
+            !activePopup.root_node.contains(parent) &&
+            ModifyObserver.isPotentialPopupNode(parent)
+        ) {
+            IntelligentLayout.requestActivePopupRefresh(`检测到新的候选弹窗父节点: ${parent.className || parent.tagName}`);
+        }
+    }
+
+    private static isPotentialPopupNode(node: HTMLElement): boolean {
+        if (!node || !node.isConnected) {
+            return false;
+        }
+
+        const style = window.getComputedStyle(node);
+        if (!style) {
+            return false;
+        }
+
+        const position = style.position;
+        const isFixedLike = position === 'fixed' || position === 'absolute';
+        const visibilityHidden = style.display === 'none' || style.visibility === 'hidden';
+        const rect = node.getBoundingClientRect();
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || rect.width;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || rect.height;
+        const width = rect.width;
+        const height = rect.height;
+        const keywordMatch = /mask|modal|popup|dialog|overlay/i.test(node.className || '');
+        const coversWidth = Math.abs(width - viewportWidth) <= 2;
+        const coversHeight = height >= viewportHeight * 0.45;
+        const semiTransparentBackground = parseFloat(style.opacity || '1') < 1 && style.backgroundColor !== 'transparent';
+
+        if (!keywordMatch && (visibilityHidden || width === 0 || height === 0)) {
+            return false;
+        }
+
+        if (keywordMatch && (isFixedLike || coversWidth || coversHeight)) {
+            return true;
+        }
+
+        if (isFixedLike && width >= viewportWidth * 0.6 && height >= viewportHeight * 0.4) {
+            return true;
+        }
+
+        if (isFixedLike && coversWidth && height >= viewportHeight * 0.3) {
+            return true;
+        }
+
+        if (semiTransparentBackground && isFixedLike && coversWidth) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static findPotentialPopupInDescendants(node: HTMLElement): HTMLElement | null {
+        const selectors = ['[class*="mask"]', '[class*="modal"]', '[class*="popup"]', '[class*="dialog"]', '[class*="overlay"]'];
+        for (let i = 0; i < selectors.length; i++) {
+            const candidate = node.querySelector(selectors[i]);
+            if (candidate instanceof HTMLElement && ModifyObserver.isPotentialPopupNode(candidate)) {
+                return candidate;
+            }
+        }
+
+        const queue: HTMLElement[] = [];
+        let currentChild = node.firstElementChild;
+        let scanned = 0;
+        const scanLimit = 6;
+        while (currentChild && scanned < scanLimit) {
+            if (currentChild instanceof HTMLElement) {
+                queue.push(currentChild);
+                scanned++;
+            }
+            currentChild = currentChild.nextElementSibling;
+        }
+
+        while (queue.length > 0 && scanned < scanLimit) {
+            const current = queue.shift();
+            if (!current) {
+                continue;
+            }
+            if (ModifyObserver.isPotentialPopupNode(current)) {
+                return current;
+            }
+            let child = current.firstElementChild;
+            while (child && scanned < scanLimit) {
+                if (child instanceof HTMLElement) {
+                    queue.push(child);
+                    scanned++;
+                }
+                child = child.nextElementSibling;
+            }
+        }
+
+        return null;
+    }
+
     static disconnect(): void {
         Log.info('========== 断开DOM监听器 ==========', ModifyObserver.TAG);
         const pendingCount = ModifyObserver.pendingRecords.length;
@@ -361,6 +514,8 @@ export default class ModifyObserver {
         }
         
         Log.d(`记录分类: 移除${removeRecords.length}条, 添加${addRecords.length}条, 属性${attrRecords.length}条`, ModifyObserver.TAG);
+        
+        ModifyObserver.detectNewPopupCandidates(addRecords, attrRecords);
         
         // STEP 1: 处理节点移除
         const hasValidRemove = ModifyObserver.handleRemove(removeRecords);
