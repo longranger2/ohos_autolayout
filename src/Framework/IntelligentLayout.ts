@@ -37,7 +37,37 @@ export default class IntelligentLayout {
         Log.info('进入 intelligentLayout', IntelligentLayout.TAG);
 
         const activePopup = IntelligentLayout.getActivePopupWindowInfo();
-        const popupInfo = activePopup ?? PopupWindowDetector.findPopups(root);
+        // 即使 activePopup 存在，也要查找新的弹窗，以便检测是否有新的弹窗出现
+        const detectedPopup = PopupWindowDetector.findPopups(root);
+        
+        // 如果检测到新弹窗且与当前 activePopup 不同，则切换到新弹窗
+        let popupInfo: PopupInfo | null = null;
+        if (detectedPopup) {
+            if (!activePopup || activePopup.root_node !== detectedPopup.root_node) {
+                // 发现新弹窗或弹窗已切换，需要清理旧弹窗状态
+                if (activePopup) {
+                    Log.d(`检测到弹窗切换: 从 ${activePopup.root_node?.className} 切换到 ${detectedPopup.root_node?.className}`, IntelligentLayout.TAG);
+                    // 清理旧弹窗的状态：取消异步任务、恢复样式、重置状态
+                    const oldComponent = IntelligentLayout.getActivePopupWindowComponent();
+                    if (oldComponent instanceof PopupWindowRelayout) {
+                        oldComponent.cancelPendingValidation();
+                        oldComponent.restoreStyles();
+                    }
+                    if (activePopup.root_node) {
+                        PopupStateManager.resetState(activePopup.root_node, '检测到新弹窗，切换弹窗');
+                    }
+                    IntelligentLayout.clearActivePopupWindow();
+                }
+                popupInfo = detectedPopup;
+            } else {
+                // 当前弹窗仍然有效
+                popupInfo = activePopup;
+            }
+        } else if (activePopup) {
+            // 没有检测到新弹窗，但 activePopup 存在，继续使用它
+            popupInfo = activePopup;
+        }
+        
         Log.d(`popupInfo root_node: ${popupInfo?.root_node?.className}`, IntelligentLayout.TAG);
 
         if (popupInfo != null) {
