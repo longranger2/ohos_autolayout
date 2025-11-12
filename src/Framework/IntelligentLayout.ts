@@ -32,12 +32,35 @@ export default class IntelligentLayout {
     public static clearActivePopupWindow(): void {
         IntelligentLayout.activePopupWindow = { popupInfo: null, popupComponent: null };
     }
+
+    private static isSamePopupWindow(current: PopupInfo | null, candidate: PopupInfo | null): boolean {
+        if (!current || !candidate) {
+            return false;
+        }
+
+        return current.root_node === candidate.root_node;
+    }
     
     public static intelligentLayout(root: HTMLElement): void {
         Log.info('进入 intelligentLayout', IntelligentLayout.TAG);
 
         const activePopup = IntelligentLayout.getActivePopupWindowInfo();
-        const popupInfo = activePopup ?? PopupWindowDetector.findPopups(root);
+        const detectedPopup = PopupWindowDetector.findPopups(root);
+        let popupInfo: PopupInfo | null = null;
+
+        if (detectedPopup) {
+            if (activePopup && IntelligentLayout.isSamePopupWindow(activePopup, detectedPopup)) {
+                Object.assign(activePopup, detectedPopup);
+                popupInfo = activePopup;
+            } else {
+                if (activePopup) {
+                    Log.d(`检测到新的弹窗: ${detectedPopup.root_node?.className ?? 'unknown-root'}`, IntelligentLayout.TAG);
+                }
+                popupInfo = detectedPopup;
+            }
+        } else if (activePopup) {
+            popupInfo = activePopup;
+        }
         Log.d(`popupInfo root_node: ${popupInfo?.root_node?.className}`, IntelligentLayout.TAG);
 
         if (popupInfo != null) {
@@ -84,8 +107,20 @@ export default class IntelligentLayout {
         const activePopupInfo = IntelligentLayout.getActivePopupWindowInfo();
         let activePopupComponent = IntelligentLayout.getActivePopupWindowComponent();
 
-        if (!activePopupInfo || activePopupInfo !== popupInfo) {
+        const isSamePopup = IntelligentLayout.isSamePopupWindow(activePopupInfo, popupInfo);
+
+        if (!isSamePopup) {
+            if (activePopupInfo && activePopupComponent) {
+                IntelligentLayout.resetPopWindows('检测到新的弹窗，重置之前的弹窗状态');
+            } else if (activePopupInfo || activePopupComponent) {
+                IntelligentLayout.clearActivePopupWindow();
+            }
             activePopupComponent = new PopupWindowRelayout(popupInfo);
+            IntelligentLayout.setActivePopupWindow(popupInfo, activePopupComponent);
+        } else {
+            if (!activePopupComponent) {
+                activePopupComponent = new PopupWindowRelayout(popupInfo);
+            }
             IntelligentLayout.setActivePopupWindow(popupInfo, activePopupComponent);
         }
 
