@@ -437,6 +437,73 @@ describe('PopupWindowDetector', () => {
       )
     ).toBe(true);
     });
+
+    it('should reject masks with negative z-index in isPotentialMask', () => {
+      // Case 1: 半透明背景装饰层 (z-index = -998)
+      const backgroundLayer = document.createElement('div');
+      areaMap.set(backgroundLayer, 100);
+      semiTransparentStyleMap.set(backgroundLayer, true);
+      setStyle(backgroundLayer, { zIndex: '-998' });
+      
+      expect(
+        // @ts-ignore
+        PopupWindowDetector.isPotentialMask(
+          backgroundLayer,
+          window.getComputedStyle(backgroundLayer)
+        )
+      ).toBe(false);
+      
+      // Case 2: 负z-index的fixed元素 (Case 2)
+      const negativeFixedMask = document.createElement('div');
+      const child = document.createElement('div');
+      negativeFixedMask.appendChild(child);
+      
+      areaMap.set(negativeFixedMask, 100);
+      areaMap.set(child, 50);
+      closeButtonMap.set(child, true);
+      
+      setStyle(negativeFixedMask, { position: 'fixed', zIndex: '-100' });
+      setStyle(child, { position: 'absolute' });
+      
+      expect(
+        // @ts-ignore
+        PopupWindowDetector.isPotentialMask(
+          negativeFixedMask,
+          window.getComputedStyle(negativeFixedMask)
+        )
+      ).toBe(false);
+      
+      // Case 3: 负z-index的box-shadow元素
+      const negativeBoxShadowMask = document.createElement('div');
+      setStyle(negativeBoxShadowMask, {
+        position: 'fixed',
+        zIndex: '-50',
+        boxShadow: '0 0 10px rgba(0,0,0,0.5)',
+      });
+      boxShadowMap.set(negativeBoxShadowMask, true);
+      
+      expect(
+        // @ts-ignore
+        PopupWindowDetector.isPotentialMask(
+          negativeBoxShadowMask,
+          window.getComputedStyle(negativeBoxShadowMask)
+        )
+      ).toBe(false);
+      
+      // Case 4: 正常弹窗Mask (z-index >= 0) 应该通过
+      const validMask = document.createElement('div');
+      areaMap.set(validMask, 100);
+      semiTransparentStyleMap.set(validMask, true);
+      setStyle(validMask, { zIndex: '1000' });
+      
+      expect(
+        // @ts-ignore
+        PopupWindowDetector.isPotentialMask(
+          validMask,
+          window.getComputedStyle(validMask)
+        )
+      ).toBe(true);
+    });
   });
 
   describe('Sticky Element Detection', () => {

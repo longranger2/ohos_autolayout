@@ -148,10 +148,17 @@ export class PopupWindowDetector {
     private static isPotentialMask(el: Element, style: CSSStyleDeclaration): boolean {
         const screenAreaRatio = Utils.getScreenAreaRatio(el);
         const minMaskAreaRatio = CCMConfig.getInstance().getMinMaskAreaRatioThreshold();
+        const zIndex = Utils.zIndexToNumber(style.zIndex);
 
         // Case 1: 屏占比足够大且背景半透明
         if (screenAreaRatio > minMaskAreaRatio && Utils.isBackgroundSemiTransparent(style)) {
-            Log.d(`找到潜在Mask[Case1-半透明]: ${(el as HTMLElement).className}, 屏占比: ${screenAreaRatio.toFixed(2)}`, Tag.popupDetector);
+            // 弹窗Mask的z-index应该 >= 0（不能是负数）
+            // z-index < 0 的元素通常是背景装饰层，不可能是弹窗Mask
+            if (zIndex < 0) {
+                Log.d(`❌ 过滤潜在Mask（z-index < 0）: ${(el as HTMLElement).className}, z-index=${zIndex}, 屏占比: ${screenAreaRatio.toFixed(2)}`, Tag.popupDetector);
+                return false;
+            }
+            Log.d(`找到潜在Mask[Case1-半透明]: ${(el as HTMLElement).className}, 屏占比: ${screenAreaRatio.toFixed(2)}, z-index: ${zIndex}`, Tag.popupDetector);
             return true;
         }
 
@@ -161,14 +168,24 @@ export class PopupWindowDetector {
             if (getComputedStyle(child).position === Constant.absolute &&
                 Utils.getScreenAreaRatio(child) > CCMConfig.getInstance().getMinContentAreaRatioThreshold() &&
                 Utils.hasCloseButton(child)) {
-                Log.d(`找到潜在Mask[Case2-特殊结构]: ${(el as HTMLElement).className}`, Tag.popupDetector);
+                // 检查z-index
+                if (zIndex < 0) {
+                    Log.d(`❌ 过滤潜在Mask[Case2]（z-index < 0）: ${(el as HTMLElement).className}, z-index=${zIndex}`, Tag.popupDetector);
+                    return false;
+                }
+                Log.d(`找到潜在Mask[Case2-特殊结构]: ${(el as HTMLElement).className}, z-index: ${zIndex}`, Tag.popupDetector);
                 return true;
             }
         }
         
         // Case 3: 特例 - 使用box-shadow实现的遮罩
         if (style.position === 'fixed' && LayoutUtils.analyzeComputedBoxShadow(style.boxShadow)) {
-            Log.d(`找到潜在Mask[Case3-BoxShadow]: ${(el as HTMLElement).className}`, Tag.popupDetector);
+            // 检查z-index
+            if (zIndex < 0) {
+                Log.d(`❌ 过滤潜在Mask[Case3]（z-index < 0）: ${(el as HTMLElement).className}, z-index=${zIndex}`, Tag.popupDetector);
+                return false;
+            }
+            Log.d(`找到潜在Mask[Case3-BoxShadow]: ${(el as HTMLElement).className}, z-index: ${zIndex}`, Tag.popupDetector);
             return true;
         }
 
