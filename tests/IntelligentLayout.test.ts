@@ -166,7 +166,7 @@ describe('IntelligentLayout (single popup cache)', () => {
   it('resetAllPopWindows cancels validation and restores styles', () => {
     const info = createPopupInfo();
     IntelligentLayout.calculateForPopWin(info);
-    const component = IntelligentLayout.getActivePopupWindowComponent();
+    const component = IntelligentLayout.getActivePopupWindowComponent() as PopupWindowRelayout;
 
     IntelligentLayout.resetPopWindows('初始化');
 
@@ -184,5 +184,73 @@ describe('IntelligentLayout (single popup cache)', () => {
     IntelligentLayout.reInit('初始化');
 
     expect(IntelligentLayout.getActivePopupWindowInfo()).toBeNull();
+  });
+
+  it('intelligentLayout switches to new popup when a different popup appears', () => {
+    const root = document.createElement('div');
+    
+    // 创建弹窗A
+    const popupA = createPopupInfo();
+    popupA.root_node.className = 'popup-a';
+    
+    // 创建弹窗B
+    const popupB = createPopupInfo();
+    popupB.root_node.className = 'popup-b';
+    
+    // 第一次调用：检测到弹窗A并缓存
+    getDetectorMock().mockReturnValueOnce(popupA);
+    IntelligentLayout.intelligentLayout(root);
+    
+    expect(IntelligentLayout.getActivePopupWindowInfo()).toBe(popupA);
+    const componentA = IntelligentLayout.getActivePopupWindowComponent() as PopupWindowRelayout;
+    expect(componentA).not.toBeNull();
+    
+    // 第二次调用：弹窗A还在，但检测到弹窗B（更高层级）
+    getDetectorMock().mockReturnValueOnce(popupB);
+    IntelligentLayout.intelligentLayout(root);
+    
+    // 验证切换逻辑
+    expect(componentA.cancelPendingValidation).toHaveBeenCalled();
+    expect(componentA.restoreStyles).toHaveBeenCalled();
+    expect(getStateManager().resetState).toHaveBeenCalledWith(popupA.root_node, '检测到新弹窗');
+    
+    // 验证现在缓存的是弹窗B
+    expect(IntelligentLayout.getActivePopupWindowInfo()).toBe(popupB);
+    const componentB = IntelligentLayout.getActivePopupWindowComponent() as PopupWindowRelayout;
+    expect(componentB).not.toBe(componentA);
+  });
+
+  it('intelligentLayout continues using cached popup when no new popup detected', () => {
+    const root = document.createElement('div');
+    const popupA = createPopupInfo();
+    popupA.root_node.className = 'popup-a';
+    
+    // 第一次：检测到弹窗A
+    getDetectorMock().mockReturnValueOnce(popupA);
+    IntelligentLayout.intelligentLayout(root);
+    
+    expect(IntelligentLayout.getActivePopupWindowInfo()).toBe(popupA);
+    const componentA = IntelligentLayout.getActivePopupWindowComponent();
+    
+    // 第二次：没有检测到新弹窗，应继续使用缓存的弹窗A
+    getDetectorMock().mockReturnValueOnce(null);
+    IntelligentLayout.intelligentLayout(root);
+    
+    // 验证仍然使用弹窗A
+    expect(IntelligentLayout.getActivePopupWindowInfo()).toBe(popupA);
+    expect(IntelligentLayout.getActivePopupWindowComponent()).toBe(componentA);
+  });
+
+  it('intelligentLayout uses new popup when no cached popup exists', () => {
+    const root = document.createElement('div');
+    const popupA = createPopupInfo();
+    
+    // 没有缓存时检测到弹窗A
+    getDetectorMock().mockReturnValueOnce(popupA);
+    IntelligentLayout.intelligentLayout(root);
+    
+    // 应该缓存弹窗A
+    expect(IntelligentLayout.getActivePopupWindowInfo()).toBe(popupA);
+    expect(IntelligentLayout.getActivePopupWindowComponent()).not.toBeNull();
   });
 });

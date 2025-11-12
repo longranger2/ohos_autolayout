@@ -37,7 +37,26 @@ export default class IntelligentLayout {
         Log.info('进入 intelligentLayout', IntelligentLayout.TAG);
 
         const activePopup = IntelligentLayout.getActivePopupWindowInfo();
-        const popupInfo = activePopup ?? PopupWindowDetector.findPopups(root);
+        let popupInfo = PopupWindowDetector.findPopups(root);
+        
+        // 关键修改：即使有activePopup，也检测当前页面上的弹窗
+        // 如果检测到的弹窗和activePopup不同，说明有新弹窗出现，需要切换
+        if (activePopup && popupInfo && activePopup.root_node !== popupInfo.root_node) {
+            Log.info(`检测到新弹窗，从 ${activePopup.root_node?.className} 切换到 ${popupInfo.root_node?.className}`, IntelligentLayout.TAG);
+            // 清理旧弹窗的状态和样式
+            const oldComponent = IntelligentLayout.getActivePopupWindowComponent();
+            if (oldComponent instanceof PopupWindowRelayout) {
+                oldComponent.cancelPendingValidation();
+                oldComponent.restoreStyles();
+            }
+            PopupStateManager.resetState(activePopup.root_node, '检测到新弹窗');
+            IntelligentLayout.clearActivePopupWindow();
+        } else if (activePopup && !popupInfo) {
+            // 如果有activePopup但检测不到新弹窗，继续使用activePopup
+            popupInfo = activePopup;
+            Log.d(`继续使用当前弹窗: ${popupInfo?.root_node?.className}`, IntelligentLayout.TAG);
+        }
+        
         Log.d(`popupInfo root_node: ${popupInfo?.root_node?.className}`, IntelligentLayout.TAG);
 
         if (popupInfo != null) {
