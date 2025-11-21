@@ -517,8 +517,12 @@ export class PopupWindowRelayout extends AComponent {
             const style = window.getComputedStyle(current);
             if (style.display === 'none' ||
                 style.visibility === 'hidden' ||
-                parseFloat(style.opacity) === 0 ||
-                Utils.isBackgroundSemiTransparent(style)) {
+                parseFloat(style.opacity) === 0) {
+                return false;
+            }
+
+            // 仅检查目标节点自身的背景透明度，父级半透明背景不影响子级可见性
+            if (current === node && Utils.isBackgroundSemiTransparent(style)) {
                 return false;
             }
             if (current === stopAncestor) {
