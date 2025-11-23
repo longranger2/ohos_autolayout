@@ -344,13 +344,24 @@ export class PopupWindowDetector {
         let filteredCount = 0;
         
         for (const node of candidates) {
+            if (!(node instanceof HTMLElement)) {
+                filteredCount++;
+                continue;
+            }
+
+            // 使用层叠上下文比较，避免子元素z-index为auto(默认0)时被误判。
+            // 例：.helpBg 高度为0，但子节点 <img> 具有实际尺寸且默认 z-index 为 auto。
+            // 通过 compareZIndex 能正确识别 <img> 相对蒙版处于上方，即使计算出来的数值 z-index 为0。
+            // 同时根据兄弟顺序决定是否允许与蒙版处于同一层级。
+            const compareResult = LayoutUtils.compareZIndex(node, maskNode as HTMLElement);
+            const isAboveMask = isPreviousSibling ? compareResult > 0 : compareResult >= 0;
             const nodeZIndex = Utils.zIndexToNumber(window.getComputedStyle(node).zIndex);
-    
-            // 核心判断：节点的z-index必须高于（或等于，对于弟弟节点）蒙版的z-index
-            if (nodeZIndex >= maskZIndex + maskZIndexOffset) {
+
+            // 核心判断：候选节点必须在蒙版之上（长兄需要严格大于，弟弟允许同级）。
+            if (isAboveMask) {
                 qualifiedCount++;
                 const ratio = Utils.getScreenAreaRatio(node);
-                
+
                 if (ratio > maxRatio) {
                     const previousBest = bestCandidate ? `${(bestCandidate as HTMLElement).className || bestCandidate.tagName}(${maxRatio.toFixed(2)})` : '无';
                     maxRatio = ratio;

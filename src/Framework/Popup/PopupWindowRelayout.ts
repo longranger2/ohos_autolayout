@@ -197,12 +197,7 @@ export class PopupWindowRelayout extends AComponent {
         const children = Array.from(parentNode.children)
                 .filter(child => {
                     // 过滤掉不可见或未设置定位的元素
-                    const style = window.getComputedStyle(child);
-                    return style.display !== 'none' &&
-                        style.visibility !== 'hidden' &&
-                        child instanceof HTMLElement &&
-                        parseFloat(style.opacity) === 1 &&
-                        !Utils.isBackgroundSemiTransparent(style)
+                    return child instanceof HTMLElement && this.isNodeVisibleIncludingAncestors(child, parentNode)
                 }) as HTMLElement[];
 
         // popupType为A或C的情况
@@ -225,14 +220,10 @@ export class PopupWindowRelayout extends AComponent {
         const allNodes: HTMLElement[] = this.traverseTree(parentNode, [])
             .filter(child => {
                 // 过滤掉不可见或未设置定位的元素
-                const style = window.getComputedStyle(child);
-                return child !== parentNode && 
+                return child !== parentNode &&
                     !this.equivalentMask.contains(child) &&
-                    style.display !== 'none' &&
-                    style.visibility !== 'hidden' &&
                     child instanceof HTMLElement &&
-                    parseFloat(style.opacity) === 1 &&
-                    !Utils.isBackgroundSemiTransparent(style) &&
+                    this.isNodeVisibleIncludingAncestors(child, parentNode) &&
                     LayoutUtils.isStackingContext(child)
             });
         
@@ -504,6 +495,10 @@ export class PopupWindowRelayout extends AComponent {
      * @returns {Array} 所有节点的数组
      */
     private traverseTree(node: HTMLElement, result: HTMLElement[]): HTMLElement[] {
+        if (!this.isNodeVisibleIncludingAncestors(node)) {
+            return result;
+        }
+
         result.push(node);
         if (LayoutUtils.isOverflowScroll(node)) {
             this.scrollNodes.push(node);
@@ -514,6 +509,29 @@ export class PopupWindowRelayout extends AComponent {
             }
         }
         return result;
+    }
+
+    private isNodeVisibleIncludingAncestors(node: HTMLElement, stopAncestor?: HTMLElement): boolean {
+        let current: HTMLElement = node;
+        while (current) {
+            const style = window.getComputedStyle(current);
+            if (style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                parseFloat(style.opacity) === 0) {
+                return false;
+            }
+
+            // 仅检查目标节点自身的背景透明度，父级半透明背景不影响子级可见性
+            if (current === node && Utils.isBackgroundSemiTransparent(style)) {
+                return false;
+            }
+            if (current === stopAncestor) {
+                break;
+            }
+            current = current.parentElement;
+        }
+
+        return true;
     }
 
     private async getLayoutConstraintReport(token: { cancelled: boolean; generation: number }): Promise<void> {
