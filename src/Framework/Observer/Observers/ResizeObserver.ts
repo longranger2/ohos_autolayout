@@ -49,9 +49,8 @@ export default class ResizeObserver {
             return;
         }
         
-        // 步骤1: 取消所有动画超时任务
-        Log.d('步骤1: 取消所有活跃的动画超时任务', ResizeObserver.TAG);
-        ModifyObserver.cancelAllAnimationTimeouts();
+        // 步骤1: 窗口尺寸变化，不再需要取消动画延迟（改为依赖 end 事件）
+        Log.d('步骤1: 窗口尺寸变化，依赖动画 end 事件自动触发检测', ResizeObserver.TAG);
         
         // 步骤2: 重置所有弹窗状态（取消异步验证、重置状态为IDLE、标记为dirty）
         Log.d('步骤2: 重置所有弹窗窗口状态', ResizeObserver.TAG);

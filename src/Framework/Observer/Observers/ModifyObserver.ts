@@ -30,9 +30,6 @@ export default class ModifyObserver {
     private static transitionStartHandler: ((event: TransitionEvent) => void) | null = null;
     private static animationEndHandler: ((event: AnimationEvent) => void) | null = null;
     private static transitionEndHandler: ((event: TransitionEvent) => void) | null = null;
-    
-    // 动画超时管理：存储所有活跃的动画延迟任务
-    private static activeAnimationTimeouts: Map<NodeJS.Timeout, HTMLElement> = new Map();
 
     static reInit(): void {
         Log.info('========== 初始化DOM监听器 ==========', ModifyObserver.TAG);
@@ -56,22 +53,7 @@ export default class ModifyObserver {
         Log.info('DOM监听器启动成功', ModifyObserver.TAG);
     }
     
-    /**
-     * 取消所有活跃的动画延迟任务
-     * 用于在resize或其他中断场景下清理未完成的动画等待
-     */
-    static cancelAllAnimationTimeouts(): void {
-        const count = ModifyObserver.activeAnimationTimeouts.size;
-        if (count > 0) {
-            Log.info(`取消所有动画超时任务: ${count}个`, ModifyObserver.TAG);
-            for (const [timeoutId, element] of ModifyObserver.activeAnimationTimeouts.entries()) {
-                clearTimeout(timeoutId);
-                Log.d(`取消超时任务: ${timeoutId} (${element.tagName}.${element.className})`, ModifyObserver.TAG);
-            }
-            ModifyObserver.activeAnimationTimeouts.clear();
-            Log.info('所有动画超时任务已取消', ModifyObserver.TAG);
-        }
-    }
+    // 删除了 cancelAllAnimationTimeouts 方法，不再需要管理超时任务
     
     /**
      * 添加全局动画事件监听，补充 MutationObserver 无法捕获的 CSS 动画
@@ -118,6 +100,7 @@ export default class ModifyObserver {
 
     /**
      * animationstart 和 transitionstart 事件的通用处理逻辑。
+     * 现在只负责更新弹窗状态，不再设置超时任务
      * @param event - 动画或过渡事件。
      * @param eventType - 用于日志和状态管理的事件类型 ('animation' | 'transition')。
      */
@@ -133,17 +116,15 @@ export default class ModifyObserver {
 
         const popupRoot = ModifyObserver.findPopupRoot(target);
         
-        // 更新弹窗状态
+        // 更新弹窗状态（如果需要的话）
         ModifyObserver.updatePopupStateOnAnimationStart(popupRoot, eventType);
         
-        const duration = ModifyObserver.getDurationFromElement(target);
-        
-        // 设置超时
-        ModifyObserver.createAnimationTimeout(target, popupRoot, duration, eventType);
+        // 注意：不再设置超时任务，改为依赖 animationend/transitionend 事件
     }
 
     /**
      * 处理动画结束事件，触发重新检测
+     * 这是触发弹窗检测的主要时机，确保动画完成后才检测
      * @param event - 动画或过渡结束事件
      * @param eventType - 事件类型 ('animation' | 'transition')
      */
@@ -152,13 +133,21 @@ export default class ModifyObserver {
         
         // 打印日志
         if (eventType === 'animation' && event instanceof AnimationEvent) {
-            Log.d(`🎬 CSS动画结束: ${target.tagName}.${target.className}, 动画名: ${event.animationName}`, ModifyObserver.TAG);
+            Log.d(`✅ CSS动画结束: ${target.tagName}.${target.className}, 动画名: ${event.animationName}`, ModifyObserver.TAG);
         } else if (eventType === 'transition' && event instanceof TransitionEvent) {
-            Log.d(`🎬 CSS过渡结束: ${target.tagName}.${target.className}, 属性: ${event.propertyName}`, ModifyObserver.TAG);
+            Log.d(`✅ CSS过渡结束: ${target.tagName}.${target.className}, 属性: ${event.propertyName}`, ModifyObserver.TAG);
+        }
+        
+        const popupRoot = ModifyObserver.findPopupRoot(target);
+        
+        // 更新弹窗状态
+        if (popupRoot && PopupStateManager.getState(popupRoot) === PopupLayoutState.WAITING_ANIMATION) {
+            const reason = eventType === 'animation' ? '动画完成' : '过渡完成';
+            PopupStateManager.setState(popupRoot, PopupLayoutState.IDLE, reason);
         }
         
         // 动画结束后，触发一次检测，以便检测可能因动画而被跳过的弹窗
-        Log.d(`动画结束，触发重新检测`, ModifyObserver.TAG);
+        Log.d(`动画结束，触发弹窗检测`, ModifyObserver.TAG);
         ObserverHandler.postTask();
     }
 
@@ -182,42 +171,7 @@ export default class ModifyObserver {
         }
     }
 
-    /**
-     * 【辅助函数】 为检测到的动画创建延迟回调，以在动画结束后解锁布局。
-     * @param target - 动画的目标元素。
-     * @param popupRoot - 弹窗根节点。
-     * @param duration - 动画时长。
-     * @param eventType - 事件类型 ('animation' | 'transition')。
-     */
-    private static createAnimationTimeout(
-        target: HTMLElement, 
-        popupRoot: HTMLElement | null, 
-        duration: number, 
-        eventType: 'animation' | 'transition'
-    ): void {
-        
-        if (duration <= 0) {
-            return;
-        }
-
-        Log.d(`锁定布局，延迟 ${duration}ms`, ModifyObserver.TAG);
-
-        const timeoutId: NodeJS.Timeout = setTimeout(() => {
-            ModifyObserver.activeAnimationTimeouts.delete(timeoutId);
-            
-            const logMessage = eventType === 'animation' ? 'CSS动画延迟结束' : 'CSS过渡延迟结束';
-            Log.d(`${logMessage}，解锁布局`, ModifyObserver.TAG);
-            
-            if (popupRoot && PopupStateManager.getState(popupRoot) === PopupLayoutState.WAITING_ANIMATION) {
-                const reason = eventType === 'animation' ? '动画完成' : '过渡完成';
-                PopupStateManager.setState(popupRoot, PopupLayoutState.IDLE, reason);
-            }
-            
-            ObserverHandler.postTask();
-        }, duration);
-        
-        ModifyObserver.activeAnimationTimeouts.set(timeoutId, target);
-    }
+    // 删除了 createAnimationTimeout 方法，改为依赖 animationend/transitionend 事件
     
     /**
      * 查找元素所属的弹窗根节点
@@ -243,9 +197,6 @@ export default class ModifyObserver {
         // 清理待处理的记录
         ModifyObserver.pendingRecords = [];
         ModifyObserver.scheduledWork = false;
-        
-        // 取消所有动画超时任务
-        ModifyObserver.cancelAllAnimationTimeouts();
         
         // 移除动画监听器
         if (ModifyObserver.animationListenerAdded) {
@@ -407,30 +358,23 @@ export default class ModifyObserver {
         // STEP 1: 处理节点移除
         const hasValidRemove = ModifyObserver.handleRemove(removeRecords);
 
-        // STEP 2: 计算动画延迟
-        Log.d('开始计算动画延迟', ModifyObserver.TAG);
+        // STEP 2: 检测是否有动画（仅用于日志和决策，不设置超时）
+        Log.d('开始检测动画', ModifyObserver.TAG);
         let animationDuration = ModifyObserver.calculateAnimationDuration(addRecords, attrRecords);
         if(animationDuration > 0 ) {
-            Log.d(`检测到动画，锁定布局并延迟 ${animationDuration}ms`, ModifyObserver.TAG);
-            const timeoutId: NodeJS.Timeout = setTimeout(() => {
-                // 从Map中移除已完成的超时任务
-                ModifyObserver.activeAnimationTimeouts.delete(timeoutId);
-                Log.d(`动画延迟结束，解锁布局并触发任务`, ModifyObserver.TAG);
-                ObserverHandler.postTask();
-            }, animationDuration);
-            // 注册超时任务到Map中
-            ModifyObserver.activeAnimationTimeouts.set(timeoutId, document.body);
+            Log.d(`检测到动画: ${animationDuration}ms，等待 animationend/transitionend 事件触发检测`, ModifyObserver.TAG);
         }
 
-        // STEP 3: 延迟处理节点添加，只在有添加记录时才设置定时器
+        // STEP 3: 处理节点添加
         Log.d('开始处理节点添加', ModifyObserver.TAG);
         const hasValidAdd = ModifyObserver.handleAddedNodes(addRecords);
-        // 如果animationDuration不为0，前面就已经posttask，所以此处只需要处理为0，且存在validchange的情况
+        
+        // 如果没有动画，且有有效变更，立即触发任务
         if(animationDuration === 0 && (hasValidRemove || hasValidAdd)) {
             Log.d(`立即触发任务 (无动画): 移除变更=${hasValidRemove}, 添加变更=${hasValidAdd}`, ModifyObserver.TAG);
             ObserverHandler.postTask();
         } else {
-            Log.d(`跳过任务触发: 动画延迟=${animationDuration}ms, 移除变更=${hasValidRemove}, 添加变更=${hasValidAdd}`, ModifyObserver.TAG);
+            Log.d(`跳过任务触发: ${animationDuration > 0 ? '等待动画结束' : '无有效变更'}, 移除变更=${hasValidRemove}, 添加变更=${hasValidAdd}`, ModifyObserver.TAG);
         }
         
         Log.d('========== 批处理完成 ==========', ModifyObserver.TAG);
