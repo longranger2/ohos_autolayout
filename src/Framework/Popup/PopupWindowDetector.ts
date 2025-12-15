@@ -156,9 +156,20 @@ export class PopupWindowDetector {
             return false;
         }
 
+        // 检查长宽比：真正的 mask 不应该是特别细长的
+        // 正常的浏览页面可能很长（滚动页面），但真正的弹窗 mask 的长宽比应该接近屏幕比例
+        const rect = el.getBoundingClientRect();
+        const aspectRatio = rect.height / rect.width;
+        const maxAspectRatio = 3; // 最大长宽比，超过此值可能是滚动页面而不是 mask
+        
+        if (aspectRatio > maxAspectRatio) {
+            Log.d(`跳过长宽比过大的元素: ${(el as HTMLElement).className}, 长宽比: ${aspectRatio.toFixed(2)} (宽=${rect.width.toFixed(0)}, 高=${rect.height.toFixed(0)})`, Tag.popupDetector);
+            return false;
+        }
+
         // Case 1: 屏占比足够大且背景半透明
         if (screenAreaRatio > minMaskAreaRatio && Utils.isBackgroundSemiTransparent(style)) {
-            Log.d(`找到潜在Mask[Case1-半透明]: ${(el as HTMLElement).className}, 屏占比: ${screenAreaRatio.toFixed(2)}`, Tag.popupDetector);
+            Log.d(`找到潜在Mask[Case1-半透明]: ${(el as HTMLElement).className}, 屏占比: ${screenAreaRatio.toFixed(2)}, 长宽比: ${aspectRatio.toFixed(2)}`, Tag.popupDetector);
             return true;
         }
 
@@ -168,14 +179,14 @@ export class PopupWindowDetector {
             if (getComputedStyle(child).position === Constant.absolute &&
                 Utils.getScreenAreaRatio(child) > CCMConfig.getInstance().getMinContentAreaRatioThreshold() &&
                 Utils.hasCloseButton(child)) {
-                Log.d(`找到潜在Mask[Case2-特殊结构]: ${(el as HTMLElement).className}`, Tag.popupDetector);
+                Log.d(`找到潜在Mask[Case2-特殊结构]: ${(el as HTMLElement).className}, 长宽比: ${aspectRatio.toFixed(2)}`, Tag.popupDetector);
                 return true;
             }
         }
         
         // Case 3: 特例 - 使用box-shadow实现的遮罩
         if (style.position === 'fixed' && LayoutUtils.analyzeComputedBoxShadow(style.boxShadow)) {
-            Log.d(`找到潜在Mask[Case3-BoxShadow]: ${(el as HTMLElement).className}`, Tag.popupDetector);
+            Log.d(`找到潜在Mask[Case3-BoxShadow]: ${(el as HTMLElement).className}, 长宽比: ${aspectRatio.toFixed(2)}`, Tag.popupDetector);
             return true;
         }
 
