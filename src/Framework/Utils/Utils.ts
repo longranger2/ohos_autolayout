@@ -488,7 +488,6 @@ export default class Utils {
         }
         // 2. 检查背景颜色透明度,98%是这种情况,即使opacity是1，也不影响背景透明
         if (Utils.isColorSemiTransparent(style.backgroundColor)) {
-            Log.d(`isBackgroundSemiTransparent: style.backgroundColor: ${style.backgroundColor}, Color is semi-transparent`, Utils.TAG);
             return true;
         }
 
@@ -496,7 +495,6 @@ export default class Utils {
         const op = parseFloat(style.opacity);
         const opacityRange = CCMConfig.getInstance().getOpacityFilter();
         if ( op > opacityRange[0] / 100 && op < opacityRange[1] / 100) {
-            Log.d(`isBackgroundSemiTransparent: style.opacity: ${op}, Opacity is within range (${opacityRange[0]}%,${opacityRange[1]}%), returning true`, Utils.TAG);
             return true;
         }
         // 3. 检查背景图片中的渐变透明
@@ -523,29 +521,24 @@ export default class Utils {
     }
 
     /**
-     * 检查元素是否正在进行CSS动画或过渡
+     * 检查元素当前是否正在进行CSS动画或过渡
+     * 使用 getAnimations() API 准确判断元素的实时动画状态
      * @param element - 要检查的HTML元素
-     * @returns {boolean} - 如果元素正在进行动画或过渡则返回true
+     * @returns {boolean} - 如果元素当前正在进行动画或过渡则返回true
      */
     static isElementAnimating(element: HTMLElement): boolean {
         if (!element) {
             return false;
         }
         
-        const style = getComputedStyle(element);
-        
-        // 检查是否有transition
-        const transitionDuration = ModifyObserver.cssTimeToMs(style.transitionDuration);
-        if (transitionDuration > 0) {
-            Log.d(`元素正在进行transition: ${element.tagName}.${element.className}, 持续时间: ${transitionDuration}ms`, Utils.TAG);
-            return true;
-        }
-        
-        // 检查是否有animation
-        const animationDuration = ModifyObserver.cssTimeToMs(style.animationDuration);
-        if (animationDuration > 0) {
-            Log.d(`元素正在进行animation: ${element.tagName}.${element.className}, 持续时间: ${animationDuration}ms`, Utils.TAG);
-            return true;
+        // 使用标准的 getAnimations API 检查元素当前是否有正在运行的动画
+        // 这个 API 返回当前正在运行的动画列表，而不仅仅是检查 CSS 属性
+        if (typeof element.getAnimations === 'function') {
+            const animations = element.getAnimations();
+            if (animations.length > 0) {
+                Log.d(`元素当前正在运行动画: ${element.tagName}.${element.className}, 动画数量: ${animations.length}`, Utils.TAG);
+                return true;
+            }
         }
         
         return false;
