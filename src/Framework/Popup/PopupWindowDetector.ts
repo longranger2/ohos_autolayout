@@ -149,6 +149,13 @@ export class PopupWindowDetector {
         const screenAreaRatio = Utils.getScreenAreaRatio(el);
         const minMaskAreaRatio = CCMConfig.getInstance().getMinMaskAreaRatioThreshold();
 
+        // 优先检查：如果元素正在进行动画，不应将其判定为mask
+        // 因为动画过程中的opacity等属性可能处于过渡状态，容易误判正常页面元素为mask
+        if (Utils.isElementAnimating(el as HTMLElement)) {
+            Log.d(`跳过正在动画的元素: ${(el as HTMLElement).className}, 屏占比: ${screenAreaRatio.toFixed(2)}`, Tag.popupDetector);
+            return false;
+        }
+
         // Case 1: 屏占比足够大且背景半透明
         if (screenAreaRatio > minMaskAreaRatio && Utils.isBackgroundSemiTransparent(style)) {
             Log.d(`找到潜在Mask[Case1-半透明]: ${(el as HTMLElement).className}, 屏占比: ${screenAreaRatio.toFixed(2)}`, Tag.popupDetector);
