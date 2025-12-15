@@ -28,6 +28,8 @@ export default class ModifyObserver {
     private static animationListenerAdded = false;
     private static animationStartHandler: ((event: AnimationEvent) => void) | null = null;
     private static transitionStartHandler: ((event: TransitionEvent) => void) | null = null;
+    private static animationEndHandler: ((event: AnimationEvent) => void) | null = null;
+    private static transitionEndHandler: ((event: TransitionEvent) => void) | null = null;
     
     // 动画超时管理：存储所有活跃的动画延迟任务
     private static activeAnimationTimeouts: Map<NodeJS.Timeout, HTMLElement> = new Map();
@@ -94,9 +96,21 @@ export default class ModifyObserver {
             ModifyObserver.handleAnimationEvent(event, 'transition');
         };
         
+        // 创建并保存 animation end 监听器
+        ModifyObserver.animationEndHandler = (event: AnimationEvent): void => {
+            ModifyObserver.handleAnimationEndEvent(event, 'animation');
+        };
+        
+        // 创建并保存 transition end 监听器
+        ModifyObserver.transitionEndHandler = (event: TransitionEvent): void => {
+            ModifyObserver.handleAnimationEndEvent(event, 'transition');
+        };
+        
         // 添加监听器
         document.body.addEventListener('animationstart', ModifyObserver.animationStartHandler, true);
         document.body.addEventListener('transitionstart', ModifyObserver.transitionStartHandler, true);
+        document.body.addEventListener('animationend', ModifyObserver.animationEndHandler, true);
+        document.body.addEventListener('transitionend', ModifyObserver.transitionEndHandler, true);
         
         ModifyObserver.animationListenerAdded = true;
         Log.info('CSS动画事件监听器添加成功', ModifyObserver.TAG);
@@ -126,6 +140,26 @@ export default class ModifyObserver {
         
         // 设置超时
         ModifyObserver.createAnimationTimeout(target, popupRoot, duration, eventType);
+    }
+
+    /**
+     * 处理动画结束事件，触发重新检测
+     * @param event - 动画或过渡结束事件
+     * @param eventType - 事件类型 ('animation' | 'transition')
+     */
+    private static handleAnimationEndEvent(event: AnimationEvent | TransitionEvent, eventType: 'animation' | 'transition'): void {
+        const target = event.target as HTMLElement;
+        
+        // 打印日志
+        if (eventType === 'animation' && event instanceof AnimationEvent) {
+            Log.d(`🎬 CSS动画结束: ${target.tagName}.${target.className}, 动画名: ${event.animationName}`, ModifyObserver.TAG);
+        } else if (eventType === 'transition' && event instanceof TransitionEvent) {
+            Log.d(`🎬 CSS过渡结束: ${target.tagName}.${target.className}, 属性: ${event.propertyName}`, ModifyObserver.TAG);
+        }
+        
+        // 动画结束后，触发一次检测，以便检测可能因动画而被跳过的弹窗
+        Log.d(`动画结束，触发重新检测`, ModifyObserver.TAG);
+        ObserverHandler.postTask();
     }
 
     /**
@@ -223,6 +257,14 @@ export default class ModifyObserver {
             if (ModifyObserver.transitionStartHandler) {
                 document.body.removeEventListener('transitionstart', ModifyObserver.transitionStartHandler, true);
                 ModifyObserver.transitionStartHandler = null;
+            }
+            if (ModifyObserver.animationEndHandler) {
+                document.body.removeEventListener('animationend', ModifyObserver.animationEndHandler, true);
+                ModifyObserver.animationEndHandler = null;
+            }
+            if (ModifyObserver.transitionEndHandler) {
+                document.body.removeEventListener('transitionend', ModifyObserver.transitionEndHandler, true);
+                ModifyObserver.transitionEndHandler = null;
             }
             ModifyObserver.animationListenerAdded = false;
             Log.d('CSS动画事件监听器已移除', ModifyObserver.TAG);
