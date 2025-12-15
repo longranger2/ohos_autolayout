@@ -521,6 +521,30 @@ export default class Utils {
     }
 
     /**
+     * 检查元素当前是否正在进行CSS动画或过渡
+     * 使用 getAnimations() API 准确判断元素的实时动画状态
+     * @param element - 要检查的HTML元素
+     * @returns {boolean} - 如果元素当前正在进行动画或过渡则返回true
+     */
+    static isElementAnimating(element: HTMLElement): boolean {
+        if (!element) {
+            return false;
+        }
+        
+        // 使用标准的 getAnimations API 检查元素当前是否有正在运行的动画
+        // 这个 API 返回当前正在运行的动画列表，而不仅仅是检查 CSS 属性
+        if (typeof element.getAnimations === 'function') {
+            const animations = element.getAnimations();
+            if (animations.length > 0) {
+                Log.d(`元素当前正在运行动画: ${element.tagName}.${element.className}, 动画数量: ${animations.length}`, Utils.TAG);
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
      * 检查元素是否在视口中基本可见
      * @param {Element | null} el - 要检查的元素
      * @returns {boolean}

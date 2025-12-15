@@ -112,6 +112,14 @@ const isColorTransparentMock: jest.Mock<boolean, [string]> = jest.fn(
 const isColorSemiTransparentMock: jest.Mock<boolean, [string]> = jest.fn(
   (color) => colorSemiTransparentMap.get(color) ?? false
 );
+
+// ====== Animation Detection Map ======
+const animatingElementsMap = new Map<HTMLElement, boolean>();
+
+const isElementAnimatingMock: jest.Mock<boolean, [HTMLElement]> = jest.fn(
+  (element) => animatingElementsMap.get(element) ?? false
+);
+
 // ====== Mock Utils Module ======
 jest.mock('../src/Framework/Utils/Utils', () => ({
   __esModule: true,
@@ -129,6 +137,7 @@ jest.mock('../src/Framework/Utils/Utils', () => ({
     isColorTransparent: (color: string): boolean => isColorTransparentMock(color),
     isColorSemiTransparent: (color: string): boolean =>
       isColorSemiTransparentMock(color),
+    isElementAnimating: (element: HTMLElement): boolean => isElementAnimatingMock(element),
   },
 }));
 // ====== Additional Mock Functions ======
@@ -200,6 +209,7 @@ function resetMaps(): void {
   colorSemiTransparentMap.clear();
   boxShadowMap.clear();
   predictionMap.clear();
+  animatingElementsMap.clear();
 }
 
 function buildPopupInfo(overrides: Partial<PopupInfo> = {}): PopupInfo {
@@ -436,6 +446,58 @@ describe('PopupWindowDetector', () => {
         window.getComputedStyle(shadowMask)
       )
     ).toBe(true);
+    });
+
+    it('should skip elements that are animating to prevent false positives', () => {
+      // 测试场景：页面加载时，正常页面元素（如swiper）正在进行opacity动画
+      // 在动画过程中，opacity可能是半透明的，但不应被误判为mask
+      const animatingElement = document.createElement('div');
+      animatingElement.className = 'swiper';
+      
+      // 设置元素屏占比很大，且当前opacity是半透明（动画中）
+      areaMap.set(animatingElement, 99);
+      semiTransparentStyleMap.set(animatingElement, true);
+      
+      // 标记元素正在进行动画
+      animatingElementsMap.set(animatingElement, true);
+      
+      // 应该返回false，因为元素正在动画中
+      expect(
+        // @ts-ignore
+        PopupWindowDetector.isPotentialMask(
+          animatingElement,
+          window.getComputedStyle(animatingElement)
+        )
+      ).toBe(false);
+      
+      // 动画结束后，如果仍然是半透明，则应该被检测为mask
+      animatingElementsMap.set(animatingElement, false);
+      
+      expect(
+        // @ts-ignore
+        PopupWindowDetector.isPotentialMask(
+          animatingElement,
+          window.getComputedStyle(animatingElement)
+        )
+      ).toBe(true);
+    });
+
+    it('should correctly identify non-animating transparent elements as masks', () => {
+      // 测试场景：真正的弹窗mask，半透明但不在动画中
+      const realMask = document.createElement('div');
+      realMask.className = 'popup-mask';
+      
+      areaMap.set(realMask, 100);
+      semiTransparentStyleMap.set(realMask, true);
+      animatingElementsMap.set(realMask, false);
+      
+      expect(
+        // @ts-ignore
+        PopupWindowDetector.isPotentialMask(
+          realMask,
+          window.getComputedStyle(realMask)
+        )
+      ).toBe(true);
     });
   });
 
